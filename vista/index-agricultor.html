@@ -6,7 +6,7 @@
     <title>AgroMatch - Dashboard Agricultor</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/js/all.min.js"></script>
     <link rel="stylesheet" href="../assent/css/index-agricultor.css">
-    <!-- Leaflet CSS y JS (Reemplazo de Google Maps) -->
+    <!-- Leaflet CSS y JS para el mapa -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
@@ -26,7 +26,7 @@
                 </button>
                 <div class="notification-icon" onclick="showNotifications()">
                     <i class="fas fa-bell"></i>
-                    <span class="notification-badge">3</span>
+                    <span class="notification-badge" id="notificationBadge">3</span>
                 </div>
                 
                 <!-- MENÚ DE USUARIO -->
@@ -34,48 +34,6 @@
                     <button class="profile-menu" onclick="toggleProfileMenu()" id="profileMenuBtn">
                         <i class="fas fa-user"></i>
                     </button>
-                    
-                    <div class="profile-dropdown" id="profileDropdown">
-                        <!-- Header del dropdown con info del usuario -->
-                        <div class="profile-dropdown-header">
-                            <div class="profile-dropdown-avatar">
-                                <i class="fas fa-user"></i>
-                            </div>
-                            <div class="profile-dropdown-name">Carlos González</div>
-                            <div class="profile-dropdown-role">
-                                <i class="fas fa-seedling"></i>
-                                <span>Agricultor</span>
-                            </div>
-                        </div>
-                        
-                        <!-- Menú de opciones -->
-                        <div class="profile-dropdown-menu">
-                            <div class="profile-dropdown-item" onclick="viewProfile()">
-                                <div class="icon"><i class="fas fa-user-circle"></i></div>
-                                <span>Mi Perfil</span>
-                            </div>
-                            <div class="profile-dropdown-item" onclick="viewSettings()">
-                                <div class="icon"><i class="fas fa-cog"></i></div>
-                                <span>Configuración</span>
-                            </div>
-                            <div class="profile-dropdown-item" onclick="viewStatistics()">
-                                <div class="icon"><i class="fas fa-chart-bar"></i></div>
-                                <span>Estadísticas</span>
-                            </div>
-                            <div class="profile-dropdown-item" onclick="viewHistory()">
-                                <div class="icon"><i class="fas fa-history"></i></div>
-                                <span>Historial</span>
-                            </div>
-                            <div class="profile-dropdown-item" onclick="viewSupport()">
-                                <div class="icon"><i class="fas fa-question-circle"></i></div>
-                                <span>Ayuda y Soporte</span>
-                            </div>
-                            <div class="profile-dropdown-item logout" onclick="confirmLogout()">
-                                <div class="icon"><i class="fas fa-sign-out-alt"></i></div>
-                                <span>Cerrar Sesión</span>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
@@ -89,40 +47,18 @@
 
                 <div class="stats-grid">
                     <div class="stat-card">
-                        <div class="stat-number">4</div>
+                        <div class="stat-number" id="ofertasActivas">0</div>
                         <div class="stat-label">Ofertas Activas</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-number">12</div>
+                        <div class="stat-number" id="trabajadoresContratados">0</div>
                         <div class="stat-label">Trabajadores Contratados</div>
                     </div>
                 </div>
 
-                <div class="section-title">
-                    <i class="fas fa-clipboard-list"></i>
-                    Mis Ofertas Publicadas
-                </div>
-                
-                <div class="offer-card">
-                    <div class="offer-title">Fumigación de Cultivos - Sector Sur</div>
-                    <div class="offer-meta">
-                        <span class="offer-workers">👥 Trabajadores: 1/2 confirmados</span>
-                        <span class="status-badge status-active">Activa</span>
-                    </div>
-                    <button class="btn btn-secondary" onclick="viewApplications(this, 5)">
-                        <i class="fas fa-eye"></i> Ver Postulaciones (5)
-                    </button>
-                </div>
-
-                <div class="offer-card">
-                    <div class="offer-title">Cosecha de Café - Finca El Paraíso</div>
-                    <div class="offer-meta">
-                        <span class="offer-workers">👥 Trabajadores: 3/5 confirmados</span>
-                        <span class="status-badge status-active">Activa</span>
-                    </div>
-                    <button class="btn btn-secondary" onclick="viewApplications(this, 8)">
-                        <i class="fas fa-eye"></i> Ver Postulaciones (8)
-                    </button>
+                <!-- Contenedor dinámico para las ofertas -->
+                <div id="ofertasContainer" class="ofertas-container">
+                    <!-- Las ofertas se cargarán aquí dinámicamente -->
                 </div>
             </div>
 
@@ -131,7 +67,7 @@
                     <i class="fas fa-map-marked-alt"></i>
                     Mapa de Ubicación
                 </div>
-                <!-- Nuevo mapa interactivo con Leaflet -->
+                <!-- Mapa interactivo con Leaflet -->
                 <div id="map" style="height: 300px; border-radius: 15px; overflow: hidden; border: 2px solid #4a7c59; margin-bottom: 20px;"></div>
 
                 <div class="notifications">
@@ -152,9 +88,194 @@
 
                     <div class="notification-item" onclick="handleNotification(this)">
                         <div class="notification-title">Trabajador calificado</div>
-                        <div class="notification-text">Juan Pérez completó su trabajo con 5 estrellas ⭐</div>
+                        <div class="notification-text">Juan Pérez completó su trabajo con 5 estrellas</div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL CREAR NUEVA OFERTA -->
+    <div class="modal-overlay" id="modalCrearOferta">
+        <div class="modal-crear-oferta">
+            <!-- Header del Modal -->
+            <div class="modal-header">
+                <h2 class="modal-title">
+                    <i class="fas fa-plus-circle"></i>
+                    Crear Nueva Oferta
+                </h2>
+                <button class="modal-close" onclick="cerrarModalOferta()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <!-- Cuerpo del Modal -->
+            <div class="modal-body">
+                <form id="formCrearOferta" onsubmit="crearOferta(event)">
+                    <!-- Título de la Oferta -->
+                    <div class="form-group">
+                        <label for="tituloOferta" class="form-label">
+                            <i class="fas fa-tag"></i>
+                            Título de la Oferta
+                        </label>
+                        <input 
+                            type="text" 
+                            id="tituloOferta" 
+                            name="titulo"
+                            class="form-input" 
+                            placeholder="Ej: Cosecha de Café - Finca El Paraíso"
+                            required
+                            maxlength="200">
+                    </div>
+
+                    <!-- Descripción -->
+                    <div class="form-group">
+                        <label for="descripcionOferta" class="form-label">
+                            <i class="fas fa-align-left"></i>
+                            Descripción del Trabajo
+                        </label>
+                        <textarea 
+                            id="descripcionOferta" 
+                            name="descripcion"
+                            class="form-textarea" 
+                            placeholder="Describe detalladamente el trabajo a realizar, requisitos, horarios, ubicación, etc."
+                            required
+                            maxlength="1000"></textarea>
+                    </div>
+
+                    <!-- Pago -->
+                    <div class="form-group">
+                        <label for="pagoOferta" class="form-label">
+                            <i class="fas fa-dollar-sign"></i>
+                            Pago Ofrecido (COP por día)
+                        </label>
+                        <input 
+                            type="number" 
+                            id="pagoOferta" 
+                            name="pago"
+                            class="form-input" 
+                            placeholder="50000"
+                            required
+                            min="10000"
+                            step="1000">
+                    </div>
+
+                    <!-- Ubicación -->
+                    <div class="form-group">
+                        <label for="ubicacionOferta" class="form-label">
+                            <i class="fas fa-map-marker-alt"></i>
+                            Ubicación del Trabajo
+                        </label>
+                        <input 
+                            type="text" 
+                            id="ubicacionOferta" 
+                            name="ubicacion"
+                            class="form-input" 
+                            placeholder="Ej: Vereda El Paraíso, Chinchiná, Caldas"
+                            required
+                            maxlength="255">
+                    </div>
+                </form>
+            </div>
+
+            <!-- Acciones del Modal -->
+            <div class="modal-actions">
+                <button type="button" class="btn-modal btn-cancelar" onclick="cerrarModalOferta()">
+                    <i class="fas fa-times"></i>
+                    Cancelar
+                </button>
+                <button type="submit" form="formCrearOferta" class="btn-modal btn-crear" id="btnCrearOferta">
+                    <i class="fas fa-check"></i>
+                    Crear Oferta
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL EDITAR OFERTA -->
+    <div class="modal-overlay" id="modalEditarOferta">
+        <div class="modal-crear-oferta">
+            <div class="modal-header">
+                <h2 class="modal-title">
+                    <i class="fas fa-edit"></i>
+                    Editar Oferta
+                </h2>
+                <button class="modal-close" onclick="cerrarModalEditar()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <div class="modal-body">
+                <form id="formEditarOferta" onsubmit="guardarEdicion(event)">
+                    <input type="hidden" id="editOfertaId" name="ofertaId">
+                    
+                    <div class="form-group">
+                        <label for="editTituloOferta" class="form-label">
+                            <i class="fas fa-tag"></i>
+                            Título de la Oferta
+                        </label>
+                        <input 
+                            type="text" 
+                            id="editTituloOferta" 
+                            name="titulo"
+                            class="form-input" 
+                            required
+                            maxlength="200">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="editDescripcionOferta" class="form-label">
+                            <i class="fas fa-align-left"></i>
+                            Descripción del Trabajo
+                        </label>
+                        <textarea 
+                            id="editDescripcionOferta" 
+                            name="descripcion"
+                            class="form-textarea" 
+                            required
+                            maxlength="1000"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="editPagoOferta" class="form-label">
+                            <i class="fas fa-dollar-sign"></i>
+                            Pago Ofrecido (COP por día)
+                        </label>
+                        <input 
+                            type="number" 
+                            id="editPagoOferta" 
+                            name="pago"
+                            class="form-input" 
+                            required
+                            min="10000"
+                            step="1000">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="editUbicacionOferta" class="form-label">
+                            <i class="fas fa-map-marker-alt"></i>
+                            Ubicación del Trabajo
+                        </label>
+                        <input 
+                            type="text" 
+                            id="editUbicacionOferta" 
+                            name="ubicacion"
+                            class="form-input" 
+                            required
+                            maxlength="255">
+                    </div>
+                </form>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" class="btn-modal btn-cancelar" onclick="cerrarModalEditar()">
+                    <i class="fas fa-times"></i>
+                    Cancelar
+                </button>
+                <button type="submit" form="formEditarOferta" class="btn-modal btn-crear" id="btnGuardarEdicion">
+                    <i class="fas fa-save"></i>
+                    Guardar Cambios
+                </button>
             </div>
         </div>
     </div>

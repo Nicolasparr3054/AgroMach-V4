@@ -5,6 +5,7 @@ let userData = null;
 let currentUser = null;
 let map = null;
 
+
 // Función para cargar datos del usuario al inicializar la página
 async function loadUserData() {
     try {
@@ -875,3 +876,597 @@ async function toggleFavorite(button, jobId) {
         console.error('Error:', error);
     }
 }
+
+// ===================================================================
+// JAVASCRIPT TRABAJADOR - FUNCIONES ACTUALIZADAS PARA OFERTAS
+// ===================================================================
+
+// Agregar estas funciones al final del archivo index-trabajador.js existente
+
+// Variables globales para ofertas
+let ofertasDisponibles = [];
+let favoritos = [];
+
+// ===================================================================
+// FUNCIONES ACTUALIZADAS PARA CARGAR OFERTAS
+// ===================================================================
+
+/**
+ * Cargar trabajos disponibles - FUNCIÓN ACTUALIZADA
+ */
+function loadAvailableJobs() {
+    fetch('/api/get_jobs')
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            ofertasDisponibles = data.jobs;
+            displayJobs(data.jobs);
+            updateJobsCount(data.jobs.length);
+            console.log('Ofertas cargadas:', data.jobs.length);
+        } else {
+            showNoJobsMessage();
+        }
+    })
+    .catch(error => {
+        console.error('Error al cargar trabajos:', error);
+        showNoJobsMessage();
+    });
+}
+
+/**
+ * Mostrar trabajos en la interfaz - FUNCIÓN ACTUALIZADA
+ */
+function displayJobs(jobs) {
+    const jobsList = document.getElementById('jobsList');
+    const noJobsMessage = document.getElementById('noJobsMessage');
+    
+    if (jobs.length === 0) {
+        showNoJobsMessage();
+        return;
+    }
+    
+    jobsList.innerHTML = '';
+    if (noJobsMessage) noJobsMessage.style.display = 'none';
+    
+    jobs.forEach(job => {
+        const jobCard = createJobCard(job);
+        jobsList.appendChild(jobCard);
+    });
+    
+    // Cargar favoritos después de mostrar trabajos
+    loadFavorites();
+}
+
+/**
+ * Crear tarjeta de trabajo - FUNCIÓN ACTUALIZADA
+ */
+function createJobCard(job) {
+    const div = document.createElement('div');
+    div.className = 'job-card';
+    
+    // Calcular días desde publicación
+    const fechaPublicacion = new Date(job.fecha_publicacion);
+    const ahora = new Date();
+    const diasPublicada = Math.floor((ahora - fechaPublicacion) / (1000 * 60 * 60 * 24));
+    
+    // Formatear descripción (tomar solo las primeras 200 caracteres)
+    let descripcionCorta = job.descripcion;
+    if (descripcionCorta.length > 200) {
+        descripcionCorta = descripcionCorta.substring(0, 200) + '...';
+    }
+    
+    div.innerHTML = `
+        <div class="job-header">
+            <div class="job-title">${job.titulo}</div>
+            <div class="job-salary">${Number(job.pago_ofrecido).toLocaleString()}/día</div>
+        </div>
+        <div class="job-details">
+            ${descripcionCorta}
+        </div>
+        <div class="job-meta">
+            <div class="job-meta-item">
+                <i class="fas fa-user"></i>
+                <span>${job.nombre_agricultor}</span>
+            </div>
+            <div class="job-meta-item">
+                <i class="fas fa-calendar"></i>
+                <span>Hace ${diasPublicada === 0 ? 'hoy' : diasPublicada + ' día' + (diasPublicada > 1 ? 's' : '')}</span>
+            </div>
+            <div class="job-meta-item">
+                <i class="fas fa-users"></i>
+                <span>${job.num_postulaciones || 0} postulaciones</span>
+            </div>
+        </div>
+        <div class="job-footer">
+            <div class="job-tags">
+                <span class="job-tag">${job.estado}</span>
+            </div>
+            <div class="job-actions">
+                <button class="favorite-btn" onclick="toggleFavorite(this, ${job.id_oferta})" data-job-id="${job.id_oferta}">
+                    <i class="far fa-heart"></i>
+                </button>
+                <button class="apply-btn" onclick="showApplyModal(${job.id_oferta}, '${job.titulo.replace(/'/g, "\\'")}')">
+                    <i class="fas fa-paper-plane"></i> Postularme
+                </button>
+            </div>
+        </div>
+    `;
+    
+    return div;
+}
+
+/**
+ * Cargar favoritos del usuario
+ */
+async function loadFavorites() {
+    try {
+        const response = await fetch('/api/favoritos');
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+                favoritos = data.favoritos.map(f => f.job_id);
+                updateFavoriteButtons();
+            }
+        }
+    } catch (error) {
+        console.error('Error cargando favoritos:', error);
+    }
+}
+
+/**
+ * Actualizar botones de favoritos
+ */
+function updateFavoriteButtons() {
+    const favoriteButtons = document.querySelectorAll('.favorite-btn');
+    favoriteButtons.forEach(button => {
+        const jobId = parseInt(button.getAttribute('data-job-id'));
+        const isFavorite = favoritos.includes(jobId);
+        
+        button.classList.toggle('active', isFavorite);
+        const icon = button.querySelector('i');
+        
+        if (isFavorite) {
+            icon.classList.remove('far');
+            icon.classList.add('fas');
+        } else {
+            icon.classList.remove('fas');
+            icon.classList.add('far');
+        }
+    });
+}
+
+/**
+ * Alternar favorito - FUNCIÓN ACTUALIZADA
+ */
+async function toggleFavorite(button, jobId) {
+    const jobCard = button.closest('.job-card');
+    const jobTitle = jobCard.querySelector('.job-title').textContent;
+    
+    const isFavorite = favoritos.includes(jobId);
+    
+    try {
+        const response = await fetch('/api/favoritos', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                job_id: jobId,
+                job_title: jobTitle,
+                action: isFavorite ? 'remove' : 'add'
+            })
+        });
+
+        const data = await response.json();
+        
+        if (data.success) {
+            if (isFavorite) {
+                // Remover de favoritos
+                favoritos = favoritos.filter(id => id !== jobId);
+                button.classList.remove('active');
+                button.innerHTML = '<i class="far fa-heart"></i>';
+                showToast('info', 'Removido de favoritos', jobTitle);
+            } else {
+                // Agregar a favoritos
+                favoritos.push(jobId);
+                button.classList.add('active');
+                button.innerHTML = '<i class="fas fa-heart"></i>';
+                showToast('success', 'Agregado a favoritos', jobTitle);
+            }
+            
+            // Animación del botón
+            button.style.transform = 'scale(1.2)';
+            setTimeout(() => {
+                button.style.transform = 'scale(1)';
+            }, 200);
+            
+        } else {
+            throw new Error(data.message || 'Error al actualizar favorito');
+        }
+        
+    } catch (error) {
+        console.error('Error actualizando favorito:', error);
+        showToast('error', 'Error', 'No se pudo actualizar el favorito');
+    }
+}
+
+/**
+ * Mostrar modal de postulación - FUNCIÓN ACTUALIZADA
+ */
+function showApplyModal(jobId, jobTitle) {
+    selectedJobId = jobId;
+    document.getElementById('jobDetailsForApplication').innerHTML = `
+        <strong>Trabajo:</strong> ${jobTitle}
+    `;
+    document.getElementById('applyJobModal').style.display = 'flex';
+    document.getElementById('overlay').style.display = 'block';
+}
+
+/**
+ * Confirmar postulación - FUNCIÓN ACTUALIZADA
+ */
+function confirmApplication() {
+    if (!selectedJobId) return;
+    
+    const btnConfirm = document.getElementById('confirmApplyBtn');
+    const originalText = btnConfirm.innerHTML;
+    
+    btnConfirm.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
+    btnConfirm.disabled = true;
+    
+    fetch('/api/apply_job', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            job_id: selectedJobId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            btnConfirm.innerHTML = '<i class="fas fa-check"></i> ¡Enviado!';
+            btnConfirm.style.background = 'linear-gradient(135deg, #22c55e, #16a34a)';
+            
+            showToast('success', 'Postulación enviada', 'Tu postulación ha sido enviada exitosamente');
+            
+            setTimeout(() => {
+                closeApplyModal();
+                loadAvailableJobs(); // Recargar trabajos
+                loadStats(); // Actualizar estadísticas
+            }, 1500);
+            
+        } else {
+            throw new Error(data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showToast('error', 'Error', error.message || 'Error de conexión. Intenta de nuevo.');
+        
+        btnConfirm.innerHTML = originalText;
+        btnConfirm.disabled = false;
+        btnConfirm.style.background = '';
+    });
+}
+
+/**
+ * Cargar mis trabajos - FUNCIÓN ACTUALIZADA
+ */
+function loadMyJobs() {
+    fetch('/api/get_my_jobs')
+    .then(response => response.json())
+    .then(data => {
+        if (data.success && data.jobs.length > 0) {
+            displayMyJobs(data.jobs);
+        } else {
+            const noMyJobsMessage = document.getElementById('noMyJobsMessage');
+            if (noMyJobsMessage) {
+                noMyJobsMessage.style.display = 'block';
+            }
+        }
+    })
+    .catch(error => {
+        console.error('Error al cargar mis trabajos:', error);
+    });
+}
+
+/**
+ * Mostrar mis trabajos - FUNCIÓN ACTUALIZADA
+ */
+function displayMyJobs(jobs) {
+    const myJobsList = document.getElementById('myJobsList');
+    const noMyJobsMessage = document.getElementById('noMyJobsMessage');
+    
+    if (!myJobsList) return;
+    
+    myJobsList.innerHTML = '';
+    if (noMyJobsMessage) noMyJobsMessage.style.display = 'none';
+    
+    jobs.forEach(job => {
+        const jobCard = createMyJobCard(job);
+        myJobsList.appendChild(jobCard);
+    });
+}
+
+/**
+ * Crear tarjeta de mi trabajo - FUNCIÓN ACTUALIZADA
+ */
+function createMyJobCard(job) {
+    const div = document.createElement('div');
+    div.className = 'job-card my-job-card';
+    
+    let statusClass = '';
+    let statusText = '';
+    
+    switch(job.estado) {
+        case 'Pendiente':
+            statusClass = 'status-pending';
+            statusText = 'Pendiente';
+            break;
+        case 'Aceptada':
+            statusClass = 'status-confirmed';
+            statusText = 'Confirmado';
+            break;
+        case 'Rechazada':
+            statusClass = 'status-rejected';
+            statusText = 'Rechazado';
+            break;
+        case 'Favorito':
+            statusClass = 'status-favorite';
+            statusText = 'Favorito';
+            break;
+    }
+    
+    // Formatear descripción
+    let descripcionCorta = job.descripcion;
+    if (descripcionCorta.length > 150) {
+        descripcionCorta = descripcionCorta.substring(0, 150) + '...';
+    }
+    
+    div.innerHTML = `
+        <div class="job-header">
+            <div class="job-title">${job.titulo}</div>
+            <div class="job-status ${statusClass}">${statusText}</div>
+        </div>
+        <div class="job-details">
+            ${descripcionCorta}
+        </div>
+        <div class="job-meta">
+            <div class="job-meta-item">
+                <i class="fas fa-user"></i>
+                <span>${job.nombre_agricultor}</span>
+            </div>
+            <div class="job-meta-item">
+                <i class="fas fa-calendar"></i>
+                <span>Postulado: ${formatDate(job.fecha_postulacion)}</span>
+            </div>
+            <div class="job-meta-item">
+                <i class="fas fa-dollar-sign"></i>
+                <span>${Number(job.pago_ofrecido).toLocaleString()}</span>
+            </div>
+        </div>
+    `;
+    
+    return div;
+}
+
+/**
+ * Cargar estadísticas - FUNCIÓN ACTUALIZADA
+ */
+function loadStats() {
+    fetch('/api/get_worker_stats')
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const applicationsCount = document.getElementById('applicationsCount');
+            const activeJobsCount = document.getElementById('activeJobsCount');
+            const totalJobs = document.getElementById('totalJobs');
+            const totalHours = document.getElementById('totalHours');
+            
+            if (applicationsCount) applicationsCount.textContent = data.applications || 0;
+            if (activeJobsCount) activeJobsCount.textContent = data.active_jobs || 0;
+            if (totalJobs) totalJobs.textContent = data.total_jobs || 0;
+            if (totalHours) totalHours.textContent = (data.total_hours || 0) + 'h';
+        }
+    })
+    .catch(error => {
+        console.error('Error al cargar estadísticas:', error);
+    });
+}
+
+/**
+ * Filtrar trabajos - FUNCIÓN MEJORADA
+ */
+function filterJobs(searchTerm) {
+    const jobCards = document.querySelectorAll('#jobsList .job-card');
+    const searchLower = searchTerm.toLowerCase();
+    
+    jobCards.forEach(card => {
+        const title = card.querySelector('.job-title').textContent.toLowerCase();
+        const details = card.querySelector('.job-details').textContent.toLowerCase();
+        const agricultor = card.querySelector('.job-meta .fa-user').nextElementSibling.textContent.toLowerCase();
+        
+        if (title.includes(searchLower) || details.includes(searchLower) || agricultor.includes(searchLower)) {
+            card.style.display = 'block';
+            card.style.animation = 'fadeIn 0.5s ease';
+        } else {
+            card.style.display = 'none';
+        }
+    });
+}
+
+/**
+ * Filtrar por tipo - FUNCIÓN MEJORADA
+ */
+function filterByType(button, type) {
+    // Remover clase active de todos los botones
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // Agregar clase active al botón seleccionado
+    button.classList.add('active');
+    
+    const jobCards = document.querySelectorAll('#jobsList .job-card');
+    
+    jobCards.forEach(card => {
+        if (type === 'todos') {
+            card.style.display = 'block';
+        } else {
+            const title = card.querySelector('.job-title').textContent.toLowerCase();
+            const description = card.querySelector('.job-details').textContent.toLowerCase();
+            
+            // Buscar el tipo en el título o descripción
+            if (title.includes(type) || description.includes(type)) {
+                card.style.display = 'block';
+            } else {
+                card.style.display = 'none';
+            }
+        }
+    });
+}
+
+/**
+ * Mostrar notificaciones Toast
+ */
+function showToast(tipo, titulo, mensaje) {
+    // Remover toast anterior si existe
+    const toastAnterior = document.querySelector('.toast');
+    if (toastAnterior) {
+        toastAnterior.remove();
+    }
+    
+    const toast = document.createElement('div');
+    toast.className = `toast ${tipo}`;
+    
+    const iconos = {
+        success: 'fa-check-circle',
+        error: 'fa-exclamation-triangle',
+        info: 'fa-info-circle',
+        warning: 'fa-exclamation-circle'
+    };
+    
+    toast.innerHTML = `
+        <div class="toast-icon">
+            <i class="fas ${iconos[tipo]}"></i>
+        </div>
+        <div class="toast-content">
+            <div class="toast-title">${titulo}</div>
+            <div class="toast-message">${mensaje}</div>
+        </div>
+    `;
+    
+    // Estilos del toast
+    toast.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        padding: 20px 24px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        z-index: 10001;
+        transform: translateX(400px);
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        border-left: 5px solid ${tipo === 'success' ? '#22c55e' : tipo === 'error' ? '#ef4444' : '#4a7c59'};
+        max-width: 400px;
+    `;
+    
+    // Estilos del icono
+    const icon = toast.querySelector('.toast-icon');
+    icon.style.cssText = `
+        font-size: 18px;
+        color: ${tipo === 'success' ? '#22c55e' : tipo === 'error' ? '#ef4444' : '#4a7c59'};
+    `;
+    
+    // Estilos del contenido
+    const content = toast.querySelector('.toast-content');
+    content.style.cssText = 'flex: 1;';
+    
+    const title = toast.querySelector('.toast-title');
+    title.style.cssText = `
+        font-weight: 600;
+        color: #1e3a2e;
+        margin-bottom: 2px;
+    `;
+    
+    const message = toast.querySelector('.toast-message');
+    message.style.cssText = `
+        color: #6b7280;
+        font-size: 14px;
+    `;
+    
+    document.body.appendChild(toast);
+    
+    // Mostrar con animación
+    setTimeout(() => {
+        toast.style.transform = 'translateX(0)';
+    }, 100);
+    
+    // Remover después de 4 segundos
+    setTimeout(() => {
+        toast.style.transform = 'translateX(400px)';
+        setTimeout(() => {
+            if (document.body.contains(toast)) {
+                document.body.removeChild(toast);
+            }
+        }, 400);
+    }, 4000);
+}
+
+/**
+ * Funciones auxiliares
+ */
+function formatDate(dateString) {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('es-ES');
+}
+
+function showNoJobsMessage() {
+    const jobsList = document.getElementById('jobsList');
+    const noJobsMessage = document.getElementById('noJobsMessage');
+    
+    if (jobsList) jobsList.innerHTML = '';
+    if (noJobsMessage) noJobsMessage.style.display = 'block';
+}
+
+function updateJobsCount(count) {
+    const jobsNearCount = document.getElementById('jobsNearCount');
+    if (jobsNearCount) jobsNearCount.textContent = count;
+}
+
+function closeApplyModal() {
+    const modal = document.getElementById('applyJobModal');
+    const overlay = document.getElementById('overlay');
+    
+    if (modal) modal.style.display = 'none';
+    if (overlay) overlay.style.display = 'none';
+    
+    selectedJobId = null;
+    
+    // Restaurar botón
+    const btnConfirm = document.getElementById('confirmApplyBtn');
+    if (btnConfirm) {
+        btnConfirm.innerHTML = '<i class="fas fa-paper-plane"></i> Confirmar Postulación';
+        btnConfirm.disabled = false;
+        btnConfirm.style.background = '';
+    }
+}
+
+// ===================================================================
+// INICIALIZACIÓN ACTUALIZADA
+// ===================================================================
+
+// En la función de inicialización del trabajador, asegúrate de tener:
+document.addEventListener('DOMContentLoaded', function() {
+    loadUserProfile();
+    loadAvailableJobs();  // Esta línea debe estar aquí
+    loadMyJobs();
+    loadStats();
+    setTimeout(loadUserProfilePhoto, 1000);
+});

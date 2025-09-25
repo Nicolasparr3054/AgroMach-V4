@@ -22,9 +22,241 @@ from flask import request, jsonify, session
 from conexion import execute_query
 from datetime import datetime, timedelta
 import json
+import mysql.connector
+import logging
 
 app = Flask(__name__)
 app.secret_key = 'agromatch_secret_key_2024'  # Cambia esto por una clave más segura
+
+# Configurar logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Después de las importaciones, antes de las rutas
+def get_db_connection():
+    try:
+        connection = mysql.connector.connect(
+            host='localhost',
+            database='Agromach_V2',
+            user='root',  # Tu usuario de MySQL
+            password='123456',  # Tu contraseña de MySQL
+            charset='utf8mb4',
+            collation='utf8mb4_unicode_ci'
+        )
+        return connection
+    except mysql.connector.Error as e:
+        logger.error(f"Error conectando a la base de datos: {e}")
+        raise
+
+@app.route('/api/crear_oferta', methods=['POST'])
+def crear_oferta():
+    """Crear una nueva oferta de trabajo"""
+    try:
+        # Verificar sesión
+        if 'user_id' not in session:
+            return jsonify({
+                'success': False,
+                'message': 'Sesión no válida'
+            }), 401
+        
+        # Verificar que el usuario sea agricultor
+        user_role = session.get('user_role') or session.get('role')
+        if user_role != 'Agricultor':
+            return jsonify({
+                'success': False,
+                'message': 'Solo los agricultores pueden crear ofertas'
+            }), 403
+        
+        data = request.get_json()
+        print(f"Datos recibidos: {data}")  # Para debug
+        
+        # Validación de datos básicos
+        if not data.get('titulo') or len(data['titulo']) < 10:
+            return jsonify({
+                'success': False,
+                'message': 'El título debe tener al menos 10 caracteres'
+            }), 400
+        
+        if not data.get('descripcion') or len(data['descripcion']) < 20:
+            return jsonify({
+                'success': False,
+                'message': 'La descripción debe tener al menos 20 caracteres'
+            }), 400
+        
+        if not data.get('pago') or int(data['pago']) < 10000:
+            return jsonify({
+                'success': False,
+                'message': 'El pago mínimo debe ser $10,000 COP'
+            }), 400
+        
+        # Descripción con ubicación incluida
+        descripcion_completa = data['descripcion']
+        if data.get('ubicacion'):
+            descripcion_completa += f"\n\nUbicación: {data['ubicacion']}"
+        
+        # Insertar en la base de datos usando execute_query
+        user_id = execute_query(
+            """INSERT INTO Oferta_Trabajo (ID_Agricultor, Titulo, Descripcion, Pago_Ofrecido, Estado) 
+               VALUES (%s, %s, %s, %s, 'Abierta')""",
+            (session['user_id'], data['titulo'], descripcion_completa, int(data['pago']))
+        )
+        
+        print(f"Oferta creada con ID: {user_id}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Oferta creada exitosamente',
+            'oferta_id': user_id
+        }), 201
+        
+    except Exception as e:
+        print(f"❌ Error en crear_oferta: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'message': f'Error interno: {str(e)}'
+        }), 500
+
+@app.route('/api/get_jobs', methods=['GET'])
+def get_jobs():
+    """Obtener todas las ofertas disponibles para trabajadores"""
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+        
+        query = """
+        SELECT 
+            ot.ID_Oferta as id_oferta,
+            ot.Titulo as titulo,
+            ot.Descripcion as descripcion,
+            ot.Pago_Ofrecido as pago_ofrecido,
+            ot.Fecha_Publicacion as fecha_publicacion,
+            ot.Estado as estado,
+            CONCAT(u.Nombre, ' ', u.Apellido) as nombre_agricultor,
+            COUNT(p.ID_Postulacion) as num_postulaciones
+        FROM Oferta_Trabajo ot
+        INNER JOIN Usuario u ON ot.ID_Agricultor = u.ID_Usuario
+        LEFT JOIN Postulacion p ON ot.ID_Oferta = p.ID_Oferta
+        WHERE ot.Estado = 'Abierta'
+        GROUP BY ot.ID_Oferta, ot.Titulo, ot.Descripcion, ot.Pago_Ofrecido, 
+                 ot.Fecha_Publicacion, ot.Estado, u.Nombre, u.Apellido
+        ORDER BY ot.Fecha_Publicacion DESC
+        LIMIT 50
+        """
+        
+        cursor.execute(query)
+        jobs = cursor.fetchall()
+        
+        cursor.close()
+        connection.close()
+        
+        print(f"Ofertas encontradas: {len(jobs)}")  # Debug
+        
+        return jsonify({
+            'success': True,
+            'jobs': jobs,
+            'total': len(jobs)
+        })
+        
+    except Exception as e:
+        print(f"Error al obtener trabajos: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        return jsonify({
+            'success': False,
+            'message': f'Error interno del servidor: {str(e)}'
+        }), 500
+
+@app.route('/api/apply_job', methods=['POST'])
+def apply_job():
+    """Postularse a un trabajo - CORREGIDO"""
+    try:
+        if 'user_id' not in session:
+            return jsonify({
+                'success': False,
+                'message': 'Sesión no válida'
+            }), 401
+        
+        if session.get('role') != 'Trabajador':
+            return jsonify({
+                'success': False,
+                'message': 'Solo los trabajadores pueden postularse'
+            }), 403
+        
+        data = request.get_json()
+        job_id = data.get('job_id')
+        
+        if not job_id:
+            return jsonify({
+                'success': False,
+                'message': 'ID de trabajo requerido'
+            }), 400
+        
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        
+        # Verificar que el trabajo existe y está abierto
+        check_job_query = "SELECT Estado FROM Oferta_Trabajo WHERE ID_Oferta = %s"
+        cursor.execute(check_job_query, (job_id,))
+        result = cursor.fetchone()
+        
+        if not result:
+            cursor.close()
+            connection.close()
+            return jsonify({
+                'success': False,
+                'message': 'Trabajo no encontrado'
+            }), 404
+        
+        if result[0] != 'Abierta':
+            cursor.close()
+            connection.close()
+            return jsonify({
+                'success': False,
+                'message': 'Este trabajo ya no está disponible'
+            }), 400
+        
+        # Verificar si ya se postuló - usando los campos correctos
+        check_application_query = """
+        SELECT ID_Postulacion FROM Postulacion 
+        WHERE ID_Oferta = %s AND ID_Trabajador = %s
+        """
+        cursor.execute(check_application_query, (job_id, session['user_id']))
+        existing_application = cursor.fetchone()
+        
+        if existing_application:
+            cursor.close()
+            connection.close()
+            return jsonify({
+                'success': False,
+                'message': 'Ya te has postulado a este trabajo'
+            }), 400
+        
+        # Crear postulación usando los campos correctos
+        insert_query = """
+        INSERT INTO Postulacion (ID_Oferta, ID_Trabajador, Fecha_Postulacion, Estado)
+        VALUES (%s, %s, %s, %s)
+        """
+        cursor.execute(insert_query, (job_id, session['user_id'], datetime.now(), 'Pendiente'))
+        
+        connection.commit()
+        cursor.close()
+        connection.close()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Postulación enviada exitosamente'
+        }), 201
+        
+    except Exception as e:
+        logger.error(f"Error al postularse: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'Error interno del servidor'
+        }), 500
+
 
 # ================================================================
 # CONFIGURACIÓN DE RUTAS ESTÁTICAS MODIFICADAS PARA TU ESTRUCTURA
@@ -623,7 +855,7 @@ def login():
             redirect_url = '/vista/index-trabajador.html'
             
         elif user['Rol'] == 'Administrador':
-            redirect_url = '/vista/dashboard-admin.html'
+            redirect_url = '/vista/index-administrador.html'
             
         else:
             raise Exception('Rol de usuario no válido.')
@@ -781,7 +1013,7 @@ def dashboard_admin():
         return redirect('/vista/index-trabajador.html')
     
     print(f"✅ Acceso autorizado al dashboard de administrador: {session.get('user_name')}")
-    return redirect('/vista/dashboard-admin.html')
+    return redirect('/vista/index-administrador.html')
 
 
 # ================================================================
@@ -1086,7 +1318,7 @@ def require_role(required_role):
                     if current_role == 'Agricultor':
                         return redirect('/vista/dashboard-agricultor.html')
                     elif current_role == 'Administrador':
-                        return redirect('/vista/dashboard-admin.html')
+                        return redirect('/vista/index-administrador.html')
                     else:
                         return redirect('/vista/index-trabajador.html')
             
@@ -3047,7 +3279,6 @@ print("✅ Rutas de Google y Facebook corregidas y cargadas")
 
 # ================================================================
 # RUTAS PARA ELIMINACIÓN DE CUENTA CON REDES SOCIALES
-# Agregar al final de tu app.py, antes de if __name__ == '__main__':
 # ================================================================
 
 @app.route('/auth/google/delete-account', methods=['POST'])
@@ -3193,7 +3424,7 @@ def delete_account_with_facebook():
 print("✅ Rutas de eliminación social cargadas correctamente")
 
 
-# ENDPOINTS FALTANTES - Agregar al final de tu app.py antes de if __name__ == '__main__':
+# ENDPOINTS FALTANTES 
 
 # 1. Endpoint para obtener documentos del usuario
 @app.route('/api/user-documents', methods=['GET'])
@@ -4815,6 +5046,719 @@ def get_dashboard_stats():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 print("✅ Rutas para postulaciones y favoritos desde dashboard agregadas correctamente")
+
+# ================================================================
+# RUTAS ESPECÍFICAS PARA EL ADMINISTRADOR
+# Agregar estas rutas a tu app.py existente
+# ================================================================
+
+# ================================================================
+# RUTAS PARA ARCHIVOS DEL ADMINISTRADOR
+# ================================================================
+
+@app.route('/vista/index-administrador.html')
+def index_administrador_html():
+    """Dashboard principal del administrador"""
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        vista_path = os.path.join(base_dir, '..', 'vista')
+        vista_path = os.path.abspath(vista_path)
+        return send_from_directory(vista_path, 'index-administrador.html')
+    except Exception as e:
+        print(f"Error sirviendo index-administrador.html: {e}")
+        return "Archivo no encontrado", 404
+
+@app.route('/assent/css/index-administrador.css')
+def administrador_css():
+    """CSS para el dashboard del administrador"""
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        css_path = os.path.join(base_dir, '..', 'assent', 'css')
+        css_path = os.path.abspath(css_path)
+        response = send_from_directory(css_path, 'index-administrador.css')
+        response.headers['Content-Type'] = 'text/css'
+        return response
+    except Exception as e:
+        print(f"Error sirviendo index-administrador.css: {e}")
+        return "CSS no encontrado", 404
+
+@app.route('/js/index-administrador.js')
+def administrador_js():
+    """JavaScript para el dashboard del administrador"""
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        js_path = os.path.join(base_dir, '..', 'js')
+        js_path = os.path.abspath(js_path)
+        response = send_from_directory(js_path, 'index-administrador.js')
+        response.headers['Content-Type'] = 'application/javascript'
+        return response
+    except Exception as e:
+        print(f"Error sirviendo index-administrador.js: {e}")
+        return "JS no encontrado", 404
+
+# ================================================================
+# MODIFICAR LA FUNCIÓN DE LOGIN EXISTENTE
+# Reemplaza tu función login() existente con esta versión actualizada
+# ================================================================
+
+@app.route('/login.py', methods=['POST'])
+def login_actualizado():
+    """Procesa el login de usuarios - VERSIÓN ACTUALIZADA CON ADMINISTRADOR"""
+    
+    try:
+        # Recoger datos del formulario
+        email = request.form.get('email', '').strip()
+        password = request.form.get('contrasena', '')
+        
+        print(f"🔐 Intento de login para: {email}")
+        
+        # Validaciones básicas
+        if not email or not password:
+            raise Exception('Por favor completa todos los campos.')
+        
+        # Buscar usuario en la base de datos
+        user = execute_query(
+            """SELECT u.ID_Usuario, u.Nombre, u.Apellido, u.Correo, u.Contrasena, u.Rol, u.Estado, u.Telefono
+               FROM Usuario u 
+               WHERE u.Correo = %s OR u.Telefono = %s""",
+            (email, email),
+            fetch_one=True
+        )
+        
+        if not user:
+            raise Exception('Credenciales incorrectas.')
+        
+        # Verificar contraseña
+        if not verify_password(password, user['Contrasena']):
+            raise Exception('Credenciales incorrectas.')
+        
+        # Verificar que el usuario esté activo
+        if user['Estado'] != 'Activo':
+            raise Exception('Tu cuenta está inactiva. Contacta al administrador.')
+        
+        # Crear sesión con todos los datos necesarios
+        session['user_id'] = user['ID_Usuario']
+        session['username'] = user['Correo']
+        session['first_name'] = user['Nombre']
+        session['last_name'] = user['Apellido']
+        session['email'] = user['Correo']
+        session['user_role'] = user['Rol']
+        session['role'] = user['Rol']
+        session['user_name'] = f"{user['Nombre']} {user['Apellido']}"
+        session['telefono'] = user.get('Telefono', '')
+        
+        print(f"✅ Login exitoso para: {user['Nombre']} {user['Apellido']} - Rol: {user['Rol']}")
+        print(f"📊 Datos de sesión guardados: ID={user['ID_Usuario']}, Role={user['Rol']}")
+        
+        # Redireccionar según el rol - ACTUALIZADO PARA INCLUIR ADMINISTRADOR
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        if user['Rol'] == 'Agricultor':
+            redirect_url = '/vista/index-agricultor.html'
+            dashboard_path = os.path.join(base_dir, '..', 'vista', 'index-agricultor.html')
+            
+        elif user['Rol'] == 'Trabajador':
+            redirect_url = '/vista/index-trabajador.html'
+            dashboard_path = os.path.join(base_dir, '..', 'vista', 'index-trabajador.html')
+            
+        elif user['Rol'] == 'Administrador':
+            redirect_url = '/vista/index-administrador.html'
+            dashboard_path = os.path.join(base_dir, '..', 'vista', 'index-administrador.html')
+            print("🔄 Preparando redirección a dashboard de ADMINISTRADOR")
+            
+        else:
+            raise Exception('Rol de usuario no válido.')
+        
+        # Verificar que el archivo existe
+        if not os.path.exists(dashboard_path):
+            print(f"❌ DASHBOARD NO EXISTE: {dashboard_path}")
+            # Fallback a un dashboard genérico
+            redirect_url = '/vista/index-trabajador.html'
+        else:
+            print(f"✅ Dashboard encontrado: {dashboard_path}")
+        
+        print(f"🎯 Redirigiendo a: {redirect_url}")
+        return redirect(redirect_url)
+        
+    except Exception as e:
+        print(f"❌ Error en login: {str(e)}")
+        
+        # Redireccionar con error
+        referer = request.headers.get('Referer', '')
+        if 'login-trabajador.html' in referer:
+            login_page = '/vista/login-trabajador.html'
+        else:
+            login_page = '/vista/login-trabajador.html'
+        
+        error_message = quote(str(e))
+        return redirect(f"{login_page}?message={error_message}&type=error")
+
+# ================================================================
+# ACTUALIZAR LA FUNCIÓN dashboard_admin EXISTENTE
+# ================================================================
+
+@app.route('/dashboard-admin')
+def dashboard_admin_actualizado():
+    """Ruta para el dashboard del administrador - VERSIÓN ACTUALIZADA"""
+    if 'user_id' not in session:
+        print("❌ Usuario no autenticado, redirigiendo a login")
+        return redirect('/vista/login-trabajador.html')
+    
+    # Verificar que el usuario sea administrador
+    if session.get('user_role') != 'Administrador':
+        print(f"❌ Usuario no es administrador: {session.get('user_role')}")
+        # Redireccionar según su rol actual
+        if session.get('user_role') == 'Agricultor':
+            return redirect('/vista/index-agricultor.html')
+        else:
+            return redirect('/vista/index-trabajador.html')
+    
+    print(f"✅ Acceso autorizado al dashboard de administrador: {session.get('user_name')}")
+    return redirect('/vista/index-administrador.html')
+
+# ================================================================
+# APIS PARA EL DASHBOARD DEL ADMINISTRADOR
+# ================================================================
+
+@app.route('/api/admin/users', methods=['GET'])
+@require_role('Administrador')
+def get_all_users_admin():
+    """Obtiene todos los usuarios para el dashboard del administrador"""
+    try:
+        # Filtros opcionales
+        tipo_filter = request.args.get('tipo', '')
+        estado_filter = request.args.get('estado', '')
+        region_filter = request.args.get('region', '')
+        
+        # Base query
+        base_query = """
+            SELECT 
+                u.ID_Usuario,
+                u.Nombre,
+                u.Apellido,
+                u.Correo,
+                u.Telefono,
+                u.Rol,
+                u.Estado,
+                u.Fecha_Registro,
+                u.Red_Social,
+                -- Información adicional según el rol
+                CASE 
+                    WHEN u.Rol = 'Agricultor' THEN (
+                        SELECT COUNT(*) FROM Oferta_Trabajo ot WHERE ot.ID_Agricultor = u.ID_Usuario
+                    )
+                    WHEN u.Rol = 'Trabajador' THEN (
+                        SELECT COUNT(*) FROM Postulacion p WHERE p.ID_Trabajador = u.ID_Usuario
+                    )
+                    ELSE 0
+                END as Actividad_Total,
+                -- Región aproximada (extraer de información disponible)
+                COALESCE(
+                    (SELECT pr.Nombre_Finca FROM Predio pr WHERE pr.ID_Usuario = u.ID_Usuario LIMIT 1),
+                    'Sin especificar'
+                ) as Region_Info
+            FROM Usuario u
+            WHERE 1=1
+        """
+        
+        params = []
+        
+        # Aplicar filtros
+        if tipo_filter and tipo_filter in ['Agricultor', 'Trabajador', 'Administrador']:
+            base_query += " AND u.Rol = %s"
+            params.append(tipo_filter)
+        
+        if estado_filter and estado_filter in ['Activo', 'Inactivo', 'Suspendido']:
+            base_query += " AND u.Estado = %s"
+            params.append(estado_filter)
+        
+        # El filtro de región es más complejo, por simplicidad lo omitimos o lo implementamos básico
+        if region_filter:
+            base_query += " AND (u.Correo LIKE %s OR EXISTS (SELECT 1 FROM Predio p WHERE p.ID_Usuario = u.ID_Usuario AND p.Nombre_Finca LIKE %s))"
+            region_like = f"%{region_filter}%"
+            params.extend([region_like, region_like])
+        
+        base_query += " ORDER BY u.Fecha_Registro DESC"
+        
+        users = execute_query(base_query, params)
+        
+        users_list = []
+        if users:
+            for user in users:
+                user_data = {
+                    'id': user['ID_Usuario'],
+                    'nombre': user['Nombre'],
+                    'apellido': user['Apellido'],
+                    'email': user['Correo'],
+                    'telefono': user.get('Telefono', ''),
+                    'tipo': user['Rol'],
+                    'estado': user['Estado'],
+                    'registro': user['Fecha_Registro'].strftime('%Y-%m-%d') if user['Fecha_Registro'] else '',
+                    'red_social': user.get('Red_Social', ''),
+                    'actividad_total': user.get('Actividad_Total', 0),
+                    'region': user.get('Region_Info', 'Sin especificar')
+                }
+                users_list.append(user_data)
+        
+        return jsonify({
+            'success': True,
+            'users': users_list,
+            'total': len(users_list)
+        })
+        
+    except Exception as e:
+        print(f"❌ Error obteniendo usuarios para admin: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/user/<int:user_id>', methods=['GET'])
+@require_role('Administrador')
+def get_user_details_admin(user_id):
+    """Obtiene detalles completos de un usuario específico"""
+    try:
+        # Información básica del usuario
+        user = execute_query("""
+            SELECT 
+                u.ID_Usuario,
+                u.Nombre,
+                u.Apellido,
+                u.Correo,
+                u.Telefono,
+                u.Rol,
+                u.Estado,
+                u.Fecha_Registro,
+                u.Red_Social,
+                u.URL_Foto,
+                u.Configuraciones
+            FROM Usuario u
+            WHERE u.ID_Usuario = %s
+        """, (user_id,), fetch_one=True)
+        
+        if not user:
+            return jsonify({'success': False, 'error': 'Usuario no encontrado'}), 404
+        
+        user_details = {
+            'info_basica': {
+                'id': user['ID_Usuario'],
+                'nombre': user['Nombre'],
+                'apellido': user['Apellido'],
+                'email': user['Correo'],
+                'telefono': user.get('Telefono', ''),
+                'rol': user['Rol'],
+                'estado': user['Estado'],
+                'fecha_registro': user['Fecha_Registro'].isoformat() if user['Fecha_Registro'] else None,
+                'red_social': user.get('Red_Social', ''),
+                'foto_url': user.get('URL_Foto', '')
+            }
+        }
+        
+        # Información específica según el rol
+        if user['Rol'] == 'Trabajador':
+            # Estadísticas del trabajador
+            stats_trabajador = execute_query("""
+                SELECT 
+                    COUNT(DISTINCT p.ID_Postulacion) as total_postulaciones,
+                    COUNT(DISTINCT al.ID_Acuerdo) as trabajos_completados,
+                    AVG(CAST(c.Puntuacion AS DECIMAL)) as calificacion_promedio
+                FROM Usuario u
+                LEFT JOIN Postulacion p ON u.ID_Usuario = p.ID_Trabajador
+                LEFT JOIN Acuerdo_Laboral al ON u.ID_Usuario = al.ID_Trabajador AND al.Estado = 'Finalizado'
+                LEFT JOIN Calificacion c ON u.ID_Usuario = c.ID_Usuario_Receptor
+                WHERE u.ID_Usuario = %s
+            """, (user_id,), fetch_one=True)
+            
+            # Habilidades
+            habilidades = execute_query("""
+                SELECT Nombre, Clasificacion 
+                FROM Habilidad 
+                WHERE ID_Trabajador = %s
+            """, (user_id,))
+            
+            user_details['estadisticas_trabajador'] = {
+                'total_postulaciones': stats_trabajador['total_postulaciones'] if stats_trabajador else 0,
+                'trabajos_completados': stats_trabajador['trabajos_completados'] if stats_trabajador else 0,
+                'calificacion_promedio': float(stats_trabajador['calificacion_promedio']) if stats_trabajador and stats_trabajador['calificacion_promedio'] else 0.0,
+                'habilidades': habilidades or []
+            }
+            
+        elif user['Rol'] == 'Agricultor':
+            # Estadísticas del agricultor
+            stats_agricultor = execute_query("""
+                SELECT 
+                    COUNT(DISTINCT ot.ID_Oferta) as ofertas_publicadas,
+                    COUNT(DISTINCT al.ID_Acuerdo) as contratos_completados,
+                    AVG(CAST(c.Puntuacion AS DECIMAL)) as calificacion_promedio
+                FROM Usuario u
+                LEFT JOIN Oferta_Trabajo ot ON u.ID_Usuario = ot.ID_Agricultor
+                LEFT JOIN Acuerdo_Laboral al ON ot.ID_Oferta = al.ID_Oferta AND al.Estado = 'Finalizado'
+                LEFT JOIN Calificacion c ON u.ID_Usuario = c.ID_Usuario_Receptor
+                WHERE u.ID_Usuario = %s
+            """, (user_id,), fetch_one=True)
+            
+            # Predios
+            predios = execute_query("""
+                SELECT Nombre_Finca, Ubicacion_Latitud, Ubicacion_Longitud
+                FROM Predio 
+                WHERE ID_Usuario = %s
+            """, (user_id,))
+            
+            user_details['estadisticas_agricultor'] = {
+                'ofertas_publicadas': stats_agricultor['ofertas_publicadas'] if stats_agricultor else 0,
+                'contratos_completados': stats_agricultor['contratos_completados'] if stats_agricultor else 0,
+                'calificacion_promedio': float(stats_agricultor['calificacion_promedio']) if stats_agricultor and stats_agricultor['calificacion_promedio'] else 0.0,
+                'predios': predios or []
+            }
+        
+        # Actividad reciente
+        actividad_reciente = execute_query("""
+            SELECT 
+                'postulacion' as tipo,
+                p.Fecha_Postulacion as fecha,
+                ot.Titulo as descripcion
+            FROM Postulacion p
+            JOIN Oferta_Trabajo ot ON p.ID_Oferta = ot.ID_Oferta
+            WHERE p.ID_Trabajador = %s
+            
+            UNION ALL
+            
+            SELECT 
+                'oferta' as tipo,
+                ot.Fecha_Publicacion as fecha,
+                ot.Titulo as descripcion
+            FROM Oferta_Trabajo ot
+            WHERE ot.ID_Agricultor = %s
+            
+            ORDER BY fecha DESC
+            LIMIT 10
+        """, (user_id, user_id))
+        
+        user_details['actividad_reciente'] = actividad_reciente or []
+        
+        return jsonify({
+            'success': True,
+            'user_details': user_details
+        })
+        
+    except Exception as e:
+        print(f"❌ Error obteniendo detalles del usuario: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/user/<int:user_id>', methods=['PUT'])
+@require_role('Administrador')
+def update_user_admin(user_id):
+    """Actualiza información de un usuario (solo para administradores)"""
+    try:
+        data = request.get_json()
+        
+        # Campos que se pueden actualizar
+        allowed_fields = ['Nombre', 'Apellido', 'Correo', 'Telefono', 'Estado']
+        update_fields = []
+        update_values = []
+        
+        for field in allowed_fields:
+            if field.lower() in data:
+                if field == 'Estado' and data[field.lower()] not in ['Activo', 'Inactivo', 'Suspendido']:
+                    return jsonify({'success': False, 'error': 'Estado no válido'}), 400
+                
+                update_fields.append(f"{field} = %s")
+                update_values.append(data[field.lower()])
+        
+        if not update_fields:
+            return jsonify({'success': False, 'error': 'No hay campos para actualizar'}), 400
+        
+        update_values.append(user_id)
+        
+        # Construir query de actualización
+        update_query = f"""
+            UPDATE Usuario 
+            SET {', '.join(update_fields)}
+            WHERE ID_Usuario = %s
+        """
+        
+        execute_query(update_query, update_values)
+        
+        # Log de auditoría
+        admin_user = session.get('user_name', 'Admin')
+        print(f"📝 {admin_user} actualizó usuario ID {user_id}: {data}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Usuario actualizado correctamente'
+        })
+        
+    except Exception as e:
+        print(f"❌ Error actualizando usuario: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/user/<int:user_id>', methods=['DELETE'])
+@require_role('Administrador')
+def delete_user_admin(user_id):
+    """Elimina un usuario (solo para administradores)"""
+    try:
+        # Verificar que el usuario no sea el administrador actual
+        if user_id == session.get('user_id'):
+            return jsonify({'success': False, 'error': 'No puedes eliminarte a ti mismo'}), 400
+        
+        # Obtener información del usuario antes de eliminar
+        user_info = execute_query("""
+            SELECT Nombre, Apellido, Correo, Rol 
+            FROM Usuario 
+            WHERE ID_Usuario = %s
+        """, (user_id,), fetch_one=True)
+        
+        if not user_info:
+            return jsonify({'success': False, 'error': 'Usuario no encontrado'}), 404
+        
+        # Eliminar registros relacionados (similar a la función existente)
+        tables_to_clean = [
+            ('Calificacion', ['ID_Usuario_Emisor', 'ID_Usuario_Receptor']),
+            ('Mensaje', ['ID_Emisor', 'ID_Receptor']),
+            ('Acuerdo_Laboral', ['ID_Trabajador']),
+            ('Postulacion', ['ID_Trabajador']),
+            ('Anexo', ['ID_Usuario']),
+            ('Habilidad', ['ID_Trabajador']),
+            ('Experiencia', ['ID_Trabajador']),
+            ('Oferta_Trabajo', ['ID_Agricultor']),
+            ('Predio', ['ID_Usuario'])
+        ]
+        
+        for table_name, columns in tables_to_clean:
+            try:
+                if len(columns) == 1:
+                    execute_query(f"DELETE FROM {table_name} WHERE {columns[0]} = %s", (user_id,))
+                else:
+                    conditions = ' OR '.join([f"{col} = %s" for col in columns])
+                    params = [user_id] * len(columns)
+                    execute_query(f"DELETE FROM {table_name} WHERE {conditions}", params)
+            except Exception as table_error:
+                print(f"Error eliminando de {table_name}: {str(table_error)}")
+                continue
+        
+        # Eliminar el usuario
+        execute_query("DELETE FROM Usuario WHERE ID_Usuario = %s", (user_id,))
+        
+        # Log de auditoría
+        admin_user = session.get('user_name', 'Admin')
+        print(f"🗑️ {admin_user} eliminó usuario: {user_info['Nombre']} {user_info['Apellido']} ({user_info['Correo']})")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Usuario {user_info["Nombre"]} {user_info["Apellido"]} eliminado correctamente'
+        })
+        
+    except Exception as e:
+        print(f"❌ Error eliminando usuario: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/stats', methods=['GET'])
+@require_role('Administrador')
+def get_admin_stats():
+    """Obtiene estadísticas generales para el dashboard del administrador"""
+    try:
+        # Estadísticas básicas
+        stats = execute_query("""
+            SELECT 
+                COUNT(CASE WHEN Rol = 'Trabajador' AND Estado = 'Activo' THEN 1 END) as trabajadores_activos,
+                COUNT(CASE WHEN Rol = 'Agricultor' AND Estado = 'Activo' THEN 1 END) as agricultores_activos,
+                COUNT(CASE WHEN Estado = 'Activo' THEN 1 END) as usuarios_activos_total,
+                COUNT(*) as usuarios_total
+            FROM Usuario
+        """, fetch_one=True)
+        
+        # Ofertas y postulaciones
+        ofertas_stats = execute_query("""
+            SELECT 
+                COUNT(CASE WHEN Estado = 'Abierta' THEN 1 END) as ofertas_activas,
+                COUNT(*) as ofertas_total
+            FROM Oferta_Trabajo
+        """, fetch_one=True)
+        
+        postulaciones_stats = execute_query("""
+            SELECT 
+                COUNT(*) as postulaciones_total,
+                COUNT(CASE WHEN Estado = 'Pendiente' THEN 1 END) as postulaciones_pendientes
+            FROM Postulacion
+        """, fetch_one=True)
+        
+        # Acuerdos laborales
+        acuerdos_stats = execute_query("""
+            SELECT 
+                COUNT(CASE WHEN Estado = 'Finalizado' THEN 1 END) as contratos_completados,
+                COUNT(CASE WHEN Estado = 'Activo' THEN 1 END) as contratos_activos
+            FROM Acuerdo_Laboral
+        """, fetch_one=True)
+        
+        return jsonify({
+            'success': True,
+            'stats': {
+                'usuarios_activos': stats['usuarios_activos_total'] if stats else 0,
+                'trabajadores_activos': stats['trabajadores_activos'] if stats else 0,
+                'agricultores_activos': stats['agricultores_activos'] if stats else 0,
+                'ofertas_activas': ofertas_stats['ofertas_activas'] if ofertas_stats else 0,
+                'postulaciones_pendientes': postulaciones_stats['postulaciones_pendientes'] if postulaciones_stats else 0,
+                'contratos_completados': acuerdos_stats['contratos_completados'] if acuerdos_stats else 0,
+                'contratos_activos': acuerdos_stats['contratos_activos'] if acuerdos_stats else 0
+            }
+        })
+        
+    except Exception as e:
+        print(f"❌ Error obteniendo estadísticas de admin: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# ================================================================
+# RUTA PARA ACTIVIDAD RECIENTE DEL ADMINISTRADOR
+# ================================================================
+
+@app.route('/api/admin/recent-activity', methods=['GET'])
+@require_role('Administrador')
+def get_recent_activity():
+    """Obtiene actividad reciente para el dashboard del administrador"""
+    try:
+        # Actividades recientes simuladas basadas en datos reales
+        recent_users = execute_query("""
+            SELECT 
+                CONCAT(Nombre, ' ', Apellido) as nombre_completo,
+                Rol,
+                Fecha_Registro,
+                'new-user' as tipo
+            FROM Usuario 
+            WHERE Fecha_Registro >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            ORDER BY Fecha_Registro DESC 
+            LIMIT 5
+        """)
+        
+        recent_jobs = execute_query("""
+            SELECT 
+                ot.Titulo,
+                ot.Fecha_Publicacion,
+                CONCAT(u.Nombre, ' ', u.Apellido) as agricultor,
+                'new-job' as tipo
+            FROM Oferta_Trabajo ot
+            JOIN Usuario u ON ot.ID_Agricultor = u.ID_Usuario
+            WHERE ot.Fecha_Publicacion >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            ORDER BY ot.Fecha_Publicacion DESC 
+            LIMIT 5
+        """)
+        
+        activities = []
+        
+        # Procesar nuevos usuarios
+        if recent_users:
+            for user in recent_users:
+                activities.append({
+                    'type': 'new-user',
+                    'icon': 'fas fa-user-plus',
+                    'message': f'<strong>Nuevo usuario registrado:</strong> {user["nombre_completo"]} ({user["Rol"]})',
+                    'time': f'Hace {(datetime.now() - user["Fecha_Registro"]).days} días'
+                })
+        
+        # Procesar nuevos trabajos
+        if recent_jobs:
+            for job in recent_jobs:
+                activities.append({
+                    'type': 'new-job',
+                    'icon': 'fas fa-briefcase',
+                    'message': f'<strong>Nueva oferta publicada:</strong> {job["Titulo"]} por {job["agricultor"]}',
+                    'time': f'Hace {(datetime.now() - job["Fecha_Publicacion"]).days} días'
+                })
+        
+        # Ordenar por fecha y limitar
+        activities = sorted(activities, key=lambda x: x['time'])[:10]
+        
+        return jsonify({
+            'success': True,
+            'activities': activities
+        })
+        
+    except Exception as e:
+        print(f"❌ Error obteniendo actividad reciente: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+print("✅ Rutas del administrador cargadas correctamente")
+
+@app.route('/api/get_farmer_jobs', methods=['GET'])
+@require_login
+def get_farmer_jobs():
+    """Obtener ofertas publicadas por el agricultor - CORREGIDO SEGÚN TU BD"""
+    try:
+        user_id = session['user_id']
+        user_role = session.get('user_role', session.get('role'))
+        
+        if user_role != 'Agricultor':
+            return jsonify({
+                'success': False,
+                'message': 'Solo los agricultores pueden ver sus ofertas'
+            }), 403
+        
+        # Consulta usando los campos exactos de tu tabla
+        ofertas = execute_query("""
+            SELECT 
+                ot.ID_Oferta as id_oferta,
+                ot.Titulo as titulo,
+                ot.Descripcion as descripcion,
+                ot.Pago_Ofrecido as pago_ofrecido,
+                ot.Fecha_Publicacion as fecha_publicacion,
+                ot.Estado as estado,
+                COUNT(p.ID_Postulacion) as num_postulaciones
+            FROM Oferta_Trabajo ot
+            LEFT JOIN Postulacion p ON ot.ID_Oferta = p.ID_Oferta 
+            WHERE ot.ID_Agricultor = %s
+            GROUP BY ot.ID_Oferta, ot.Titulo, ot.Descripcion, ot.Pago_Ofrecido, ot.Fecha_Publicacion, ot.Estado
+            ORDER BY ot.Fecha_Publicacion DESC
+        """, (user_id,))
+        
+        # Procesar ofertas
+        ofertas_procesadas = []
+        if ofertas:
+            for oferta in ofertas:
+                # Extraer ubicación de la descripción si está incluida
+                ubicacion = None
+                if oferta['descripcion']:
+                    desc_text = str(oferta['descripcion'])
+                    if 'Ubicación:' in desc_text:
+                        try:
+                            ubicacion_parte = desc_text.split('Ubicación:')[-1].strip()
+                            ubicacion = ubicacion_parte.split('\n')[0].strip()
+                        except:
+                            ubicacion = None
+                
+                ofertas_procesadas.append({
+                    'id_oferta': oferta['id_oferta'],
+                    'titulo': oferta['titulo'],
+                    'descripcion': oferta['descripcion'],
+                    'pago_ofrecido': float(oferta['pago_ofrecido']) if oferta['pago_ofrecido'] else 0,
+                    'fecha_publicacion': oferta['fecha_publicacion'].strftime('%Y-%m-%d') if oferta['fecha_publicacion'] else None,
+                    'estado': oferta['estado'],
+                    'num_postulaciones': oferta['num_postulaciones'] or 0,
+                    'ubicacion': ubicacion
+                })
+        
+        # Estadísticas del agricultor usando los campos correctos
+        estadisticas = execute_query("""
+            SELECT 
+                COUNT(CASE WHEN ot.Estado = 'Abierta' THEN 1 END) as ofertas_activas,
+                COUNT(DISTINCT p.ID_Trabajador) as trabajadores_postulados
+            FROM Oferta_Trabajo ot
+            LEFT JOIN Postulacion p ON ot.ID_Oferta = p.ID_Oferta
+            WHERE ot.ID_Agricultor = %s
+        """, (user_id,), fetch_one=True)
+        
+        return jsonify({
+            'success': True,
+            'ofertas': ofertas_procesadas,
+            'estadisticas': {
+                'ofertas_activas': estadisticas['ofertas_activas'] if estadisticas else 0,
+                'trabajadores_contratados': estadisticas['trabajadores_postulados'] if estadisticas else 0
+            }
+        })
+        
+    except Exception as e:
+        print(f"❌ Error al obtener ofertas del agricultor: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'message': f'Error interno: {str(e)}'
+        }), 500
 
 # ================================================================
 # INICIO DEL SERVIDOR   

@@ -1,10 +1,9 @@
 /**
- * AgroMatch Dashboard - JavaScript COMPLETO Y CORREGIDO
- * Sistema completo de gestión para agricultores
+ * AgroMatch Dashboard - JavaScript para Agricultor CORREGIDO
  */
 
 // ================================================================
-// VARIABLES GLOBALES Y CONFIGURACIÓN
+// VARIABLES GLOBALES
 // ================================================================
 
 let currentUser = {
@@ -15,18 +14,45 @@ let currentUser = {
     isLoggedIn: false
 };
 
-let map = null; // Variable para el mapa
+let map = null;
+let ofertasData = []; // Array para almacenar las ofertas
 
 // ================================================================
-// FUNCIONES DE AUTENTICACIÓN Y SESIÓN
+// INICIALIZACIÓN PRINCIPAL
 // ================================================================
 
 /**
- * Obtener datos del usuario desde el backend Python
+ * Inicializar dashboard cuando se carga la página
+ */
+document.addEventListener('DOMContentLoaded', async function() {
+    console.log('🌱 Iniciando Dashboard Agricultor...');
+    
+    // Configurar event listeners
+    setupEventListeners();
+    
+    // Obtener datos de sesión del usuario
+    await fetchUserSession();
+    
+    // Cargar las ofertas del agricultor
+    await cargarOfertasDelAgricultor();
+    
+    // Inicializar mapa con delay
+    setTimeout(initMap, 500);
+    
+    console.log('✅ Dashboard Agricultor inicializado correctamente');
+    showStatusMessage('¡Bienvenido al dashboard!', 'success');
+});
+
+// ================================================================
+// GESTIÓN DE SESIÓN Y USUARIO
+// ================================================================
+
+/**
+ * Obtener datos de sesión del backend
  */
 async function fetchUserSession() {
     try {
-        console.log('🔄 Obteniendo datos de sesión del servidor...');
+        console.log('🔄 Obteniendo datos de sesión...');
         
         const response = await fetch('/get_user_session', {
             method: 'GET',
@@ -40,7 +66,6 @@ async function fetchUserSession() {
             const data = await response.json();
             
             if (data.success && data.user) {
-                // Actualizar datos del usuario
                 currentUser = {
                     firstName: data.user.first_name,
                     lastName: data.user.last_name,
@@ -52,23 +77,24 @@ async function fetchUserSession() {
                     isLoggedIn: true
                 };
 
-                console.log('✅ Datos de usuario obtenidos:', currentUser);
+                console.log('✅ Usuario logueado:', currentUser.firstName);
                 updateUIWithUserData();
                 return true;
             } else {
-                console.log('❌ No hay sesión activa en el servidor');
+                console.log('❌ No hay sesión activa');
                 handleNoSession();
                 return false;
             }
         } else {
             console.log('❌ Error al obtener sesión:', response.status);
-            handleNoSession();
-            return false;
+            // En desarrollo, usar datos por defecto
+            currentUser.isLoggedIn = true;
+            updateUIWithUserData();
+            return true;
         }
     } catch (error) {
-        console.error('❌ Error conectando con el servidor:', error);
-        // En caso de error de conexión, usar datos por defecto para demo
-        console.log('🔄 Usando datos por defecto para demo');
+        console.error('❌ Error conectando con servidor:', error);
+        // En desarrollo, usar datos por defecto
         currentUser.isLoggedIn = true;
         updateUIWithUserData();
         return true;
@@ -76,199 +102,231 @@ async function fetchUserSession() {
 }
 
 /**
- * Actualizar la UI con los datos del usuario
+ * Actualizar UI con datos del usuario
  */
 function updateUIWithUserData() {
-    // Actualizar nombre en el dropdown
-    const userNameElement = document.querySelector('.profile-dropdown-name');
-    if (userNameElement) {
-        userNameElement.textContent = `${currentUser.firstName} ${currentUser.lastName}`;
+    // Agregar bienvenida en el header si no existe
+    const header = document.querySelector('.header .logo');
+    if (header && !document.querySelector('.user-welcome')) {
+        const welcomeDiv = document.createElement('div');
+        welcomeDiv.className = 'user-welcome';
+        welcomeDiv.innerHTML = `
+            <span style="margin-left: 20px; color: #4a7c59; font-weight: 600;">
+                🌾 Bienvenido, ${currentUser.firstName}
+            </span>
+        `;
+        header.parentNode.insertBefore(welcomeDiv, header.nextSibling);
     }
-
-    // Actualizar bienvenida en el header si existe
-    updateHeaderWithUserName(currentUser.firstName, currentUser.role);
-
-    console.log('✅ UI actualizada con datos del usuario');
+    
+    console.log('✅ UI actualizada para:', currentUser.firstName);
 }
 
 /**
- * Manejar cuando no hay sesión
+ * Manejar cuando no hay sesión válida
  */
 function handleNoSession() {
-    showStatusMessage('Sesión expirada. Redirigiendo al login...', 'warning');
+    showStatusMessage('Sesión expirada. Redirigiendo...', 'warning');
     setTimeout(() => {
-        // Redirigir según el rol esperado
-        if (window.location.pathname.includes('agricultor')) {
-            window.location.href = '/vista/login-trabajador.html';
-        } else {
-            window.location.href = '/vista/login-trabajador.html';
-        }
+        window.location.href = '/vista/login-trabajador.html';
     }, 2000);
 }
 
-/**
- * Actualizar el header con el nombre del usuario
- */
-function updateHeaderWithUserName(firstName, userRole) {
-    const logo = document.querySelector('.logo');
-    
-    // Verificar si ya existe el elemento de bienvenida
-    let welcomeElement = document.querySelector('.user-welcome');
-    
-    if (logo && !welcomeElement) {
-        welcomeElement = document.createElement('div');
-        welcomeElement.className = 'user-welcome';
-        
-        const roleText = userRole === 'Agricultor' ? 'Agricultor' : 'Trabajador';
-        const icon = userRole === 'Agricultor' ? '🌾' : '👨‍🌾';
-        
-        welcomeElement.innerHTML = `
-            <span>${icon}</span>
-            <span>Bienvenido, <strong style="color: #4a7c59;">${firstName}</strong></span>
-            <span style="font-size: 12px; color: #64748b; margin-left: 5px;">(${roleText})</span>
-        `;
-        
-        // Agregar estilos
-        welcomeElement.style.cssText = `
-            font-size: 16px;
-            color: #1e3a2e;
-            font-weight: 600;
-            margin-left: 20px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        `;
-        
-        logo.parentNode.insertBefore(welcomeElement, logo.nextSibling);
-    }
-}
-
 // ================================================================
-// SISTEMA DE DROPDOWN DINÁMICO - SOLUCIÓN CORREGIDA
+// MENÚ DESPLEGABLE DE USUARIO - CORREGIDO
 // ================================================================
 
 /**
- * Crear dropdown dinámicamente en el body
+ * Toggle del menú de perfil - FUNCIÓN PRINCIPAL
  */
-function createDynamicDropdown() {
+function toggleProfileMenu() {
+    console.log('🔄 Abriendo menú de perfil...');
+    
     // Remover dropdown existente si ya existe
-    const existingDropdown = document.getElementById('dynamicProfileDropdown');
+    const existingDropdown = document.getElementById('profileDropdown');
     if (existingDropdown) {
         existingDropdown.remove();
     }
 
-    // Crear nuevo dropdown
+    // Crear dropdown dinámico
     const dropdown = document.createElement('div');
-    dropdown.id = 'dynamicProfileDropdown';
+    dropdown.id = 'profileDropdown';
+    dropdown.className = 'profile-dropdown-dynamic';
+    
     dropdown.innerHTML = `
-        <div class="dynamic-dropdown-content">
-            <!-- Header del dropdown -->
-            <div class="dynamic-dropdown-header">
-                <div class="dynamic-dropdown-avatar">
-                    <i class="fas fa-user"></i>
-                </div>
-                <div class="dynamic-dropdown-name">${currentUser.firstName} ${currentUser.lastName}</div>
-                <div class="dynamic-dropdown-role">
-                    <i class="fas fa-seedling"></i>
-                    <span>${currentUser.role}</span>
-                </div>
+        <div class="profile-dropdown-header">
+            <div class="profile-dropdown-avatar">
+                <i class="fas fa-user"></i>
             </div>
-            
-            <!-- Menú de opciones -->
-            <div class="dynamic-dropdown-menu">
-                <div class="dynamic-dropdown-item" onclick="viewProfile(); closeDynamicDropdown()">
-                    <div class="icon"><i class="fas fa-user-circle"></i></div>
-                    <span>Mi Perfil</span>
-                </div>
-                <div class="dynamic-dropdown-item" onclick="viewSettings(); closeDynamicDropdown()">
-                    <div class="icon"><i class="fas fa-cog"></i></div>
-                    <span>Configuración</span>
-                </div>
-                <div class="dynamic-dropdown-item" onclick="viewStatistics(); closeDynamicDropdown()">
-                    <div class="icon"><i class="fas fa-chart-bar"></i></div>
-                    <span>Estadísticas</span>
-                </div>
-                <div class="dynamic-dropdown-item" onclick="viewHistory(); closeDynamicDropdown()">
-                    <div class="icon"><i class="fas fa-history"></i></div>
-                    <span>Historial</span>
-                </div>
-                <div class="dynamic-dropdown-item" onclick="viewSupport(); closeDynamicDropdown()">
-                    <div class="icon"><i class="fas fa-question-circle"></i></div>
-                    <span>Ayuda y Soporte</span>
-                </div>
-                <div class="dynamic-dropdown-item logout" onclick="confirmLogout(); closeDynamicDropdown()">
-                    <div class="icon"><i class="fas fa-sign-out-alt"></i></div>
-                    <span>Cerrar Sesión</span>
-                </div>
+            <div class="profile-dropdown-name">${currentUser.firstName} ${currentUser.lastName}</div>
+            <div class="profile-dropdown-role">
+                <i class="fas fa-seedling"></i>
+                <span>${currentUser.role}</span>
+            </div>
+        </div>
+        
+        <div class="profile-dropdown-menu">
+            <div class="profile-dropdown-item" onclick="viewProfile(); closeProfileMenu()">
+                <div class="icon"><i class="fas fa-user-circle"></i></div>
+                <span>Mi Perfil</span>
+            </div>
+            <div class="profile-dropdown-item" onclick="viewSettings(); closeProfileMenu()">
+                <div class="icon"><i class="fas fa-cog"></i></div>
+                <span>Configuración</span>
+            </div>
+            <div class="profile-dropdown-item" onclick="viewStatistics(); closeProfileMenu()">
+                <div class="icon"><i class="fas fa-chart-bar"></i></div>
+                <span>Estadísticas</span>
+            </div>
+            <div class="profile-dropdown-item" onclick="viewHistory(); closeProfileMenu()">
+                <div class="icon"><i class="fas fa-history"></i></div>
+                <span>Historial</span>
+            </div>
+            <div class="profile-dropdown-item" onclick="viewSupport(); closeProfileMenu()">
+                <div class="icon"><i class="fas fa-question-circle"></i></div>
+                <span>Ayuda y Soporte</span>
+            </div>
+            <div class="profile-dropdown-item logout" onclick="confirmLogout(); closeProfileMenu()">
+                <div class="icon"><i class="fas fa-sign-out-alt"></i></div>
+                <span>Cerrar Sesión</span>
             </div>
         </div>
     `;
 
-    // Estilos inline para garantizar que funcionen
+    // Estilos inline para el dropdown
     dropdown.style.cssText = `
         position: fixed;
         top: 80px;
         right: 20px;
-        z-index: 999999;
+        z-index: 9999;
         background: white;
         border-radius: 15px;
         box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-        border: 1px solid rgba(144, 238, 144, 0.2);
+        border: 1px solid rgba(74, 124, 89, 0.2);
         min-width: 280px;
         opacity: 0;
         visibility: hidden;
-        transform: translateY(-15px) scale(0.95);
+        transform: translateY(-10px);
         transition: all 0.3s ease;
-        overflow: hidden;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     `;
 
-    // Añadir al body
+    // Agregar al body
     document.body.appendChild(dropdown);
 
-    return dropdown;
-}
-
-/**
- * Mostrar dropdown dinámico
- */
-function showDynamicDropdown() {
-    const dropdown = createDynamicDropdown();
-    
-    // Calcular posición basada en el botón de perfil
-    const profileBtn = document.getElementById('profileMenuBtn');
-    if (profileBtn) {
-        const rect = profileBtn.getBoundingClientRect();
-        dropdown.style.top = (rect.bottom + 10) + 'px';
-        dropdown.style.right = (window.innerWidth - rect.right) + 'px';
-    }
-
     // Mostrar con animación
-    requestAnimationFrame(() => {
+    setTimeout(() => {
         dropdown.style.opacity = '1';
         dropdown.style.visibility = 'visible';
-        dropdown.style.transform = 'translateY(0) scale(1)';
-    });
+        dropdown.style.transform = 'translateY(0)';
+    }, 10);
+
+    // Agregar estilos para los elementos internos
+    addDropdownStyles();
 
     // Mostrar overlay
     const overlay = document.getElementById('overlay');
     if (overlay) {
         overlay.classList.add('show');
+        overlay.onclick = closeProfileMenu;
     }
 
-    return dropdown;
+    console.log('✅ Menú de perfil abierto');
 }
 
 /**
- * Cerrar dropdown dinámico
+ * Agregar estilos para el dropdown
  */
-function closeDynamicDropdown() {
-    const dropdown = document.getElementById('dynamicProfileDropdown');
+function addDropdownStyles() {
+    if (document.getElementById('dropdown-styles')) return;
+
+    const style = document.createElement('style');
+    style.id = 'dropdown-styles';
+    style.textContent = `
+        .profile-dropdown-header {
+            padding: 20px;
+            text-align: center;
+            background: linear-gradient(135deg, rgba(74, 124, 89, 0.1), rgba(144, 238, 144, 0.1));
+            border-bottom: 1px solid rgba(74, 124, 89, 0.2);
+        }
+        .profile-dropdown-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4a7c59, #1e3a2e);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 10px;
+            font-size: 20px;
+        }
+        .profile-dropdown-name {
+            font-size: 16px;
+            font-weight: 700;
+            color: #1e3a2e;
+            margin-bottom: 5px;
+        }
+        .profile-dropdown-role {
+            font-size: 14px;
+            color: #4a7c59;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+        }
+        .profile-dropdown-menu {
+            padding: 10px 0;
+        }
+        .profile-dropdown-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 20px;
+            color: #1e3a2e;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border-bottom: 1px solid rgba(74, 124, 89, 0.1);
+        }
+        .profile-dropdown-item:hover {
+            background: rgba(74, 124, 89, 0.1);
+            padding-left: 25px;
+        }
+        .profile-dropdown-item.logout {
+            color: #dc2626;
+            border-top: 1px solid rgba(220, 38, 38, 0.2);
+            margin-top: 5px;
+        }
+        .profile-dropdown-item.logout:hover {
+            background: rgba(220, 38, 38, 0.1);
+        }
+        .profile-dropdown-item .icon {
+            width: 20px;
+            text-align: center;
+        }
+        .overlay.show {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.3);
+            z-index: 9998;
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+/**
+ * Cerrar menú de perfil
+ */
+function closeProfileMenu() {
+    const dropdown = document.getElementById('profileDropdown');
     const overlay = document.getElementById('overlay');
     
     if (dropdown) {
         dropdown.style.opacity = '0';
         dropdown.style.visibility = 'hidden';
-        dropdown.style.transform = 'translateY(-15px) scale(0.95)';
+        dropdown.style.transform = 'translateY(-10px)';
         
         setTimeout(() => {
             if (dropdown.parentNode) {
@@ -276,242 +334,142 @@ function closeDynamicDropdown() {
             }
         }, 300);
     }
-
+    
     if (overlay) {
         overlay.classList.remove('show');
+        overlay.onclick = null;
     }
-
-    // Remover clase active del botón
-    const profileBtn = document.getElementById('profileMenuBtn');
-    if (profileBtn) {
-        profileBtn.classList.remove('active');
-    }
-}
-
-/**
- * Toggle del menú de perfil - FUNCIÓN PRINCIPAL
- */
-function toggleProfileMenu() {
-    const existingDropdown = document.getElementById('dynamicProfileDropdown');
-    const profileBtn = document.getElementById('profileMenuBtn');
     
-    if (existingDropdown) {
-        closeDynamicDropdown();
-    } else {
-        showDynamicDropdown();
-        if (profileBtn) {
-            profileBtn.classList.add('active');
-        }
-    }
-}
-
-/**
- * Cerrar dropdown original (función de compatibilidad)
- */
-function closeProfileDropdown() {
-    closeDynamicDropdown();
+    console.log('✅ Menú de perfil cerrado');
 }
 
 // ================================================================
 // FUNCIONES DEL MENÚ DE PERFIL
 // ================================================================
 
-/**
- * Ver perfil del usuario
- */
 function viewProfile() {
-    showStatusMessage('Abriendo perfil de usuario...', 'info');
-    
+    showStatusMessage('Abriendo perfil...', 'info');
     setTimeout(() => {
-        const profileInfo = `👤 PERFIL DE USUARIO
-                
+        alert(`👤 PERFIL DE ${currentUser.firstName.toUpperCase()}
+
 Nombre: ${currentUser.firstName} ${currentUser.lastName}
 Email: ${currentUser.email}
 Rol: ${currentUser.role}
-${currentUser.telefono ? `Teléfono: ${currentUser.telefono}` : ''}
-
 Estado: Activo ✅
-Fecha de registro: Enero 2024
-Contratos completados: 15
-Calificación: 4.8/5 ⭐`;
-        
-        alert(profileInfo);
+
+📊 ESTADÍSTICAS:
+• Ofertas publicadas: 15
+• Trabajadores contratados: 47
+• Calificación promedio: 4.8/5 ⭐`);
     }, 500);
 }
 
-/**
- * Ver configuración
- */
 function viewSettings() {
     showStatusMessage('Cargando configuración...', 'info');
-    
     setTimeout(() => {
-        alert(`⚙️ CONFIGURACIÓN DE ${currentUser.firstName}:
+        alert(`⚙️ CONFIGURACIÓN
 
 • Notificaciones: Activadas 🔔
 • Idioma: Español 🇪🇸
-• Zona horaria: Colombia (UTC-5) 🕐
+• Zona horaria: Colombia (UTC-5)
 • Privacidad: Público 👥
-• Modo oscuro: Desactivado 🌞
-• Notificaciones por email: Activadas 📧
 
-Para cambiar estos ajustes, ve a tu panel de configuración.`);
+Para cambiar estos ajustes, contacta soporte.`);
     }, 500);
 }
 
-/**
- * Ver estadísticas
- */
 function viewStatistics() {
     showStatusMessage('Cargando estadísticas...', 'info');
-    
     setTimeout(() => {
-        alert(`📊 ESTADÍSTICAS DE ${currentUser.firstName}:
+        alert(`📊 ESTADÍSTICAS DE ${currentUser.firstName}
 
-📈 RENDIMIENTO GENERAL:
-• Contratos completados: 15 ✅
-• Contratos en progreso: 3 🔄
+📈 RENDIMIENTO:
+• Ofertas activas: ${document.getElementById('ofertasActivas').textContent}
+• Trabajadores contratados: ${document.getElementById('trabajadoresContratados').textContent}
 • Calificación promedio: 4.8/5 ⭐
-• Trabajadores contratados: 47 👥
-
-⏱️ TIEMPO DE RESPUESTA:
-• Promedio: 2 horas
-• Último mes: 1.5 horas (Mejorando! 📈)
 
 💰 FINANCIERO:
-• Total pagado: $2,450,000 COP
+• Total invertido: $2,450,000 COP
 • Promedio por contrato: $163,333 COP`);
     }, 500);
 }
 
-/**
- * Ver historial
- */
 function viewHistory() {
     showStatusMessage('Cargando historial...', 'info');
-    
     setTimeout(() => {
-        alert(`💼 HISTORIAL DE TRABAJOS DE ${currentUser.firstName}:
+        alert(`📅 HISTORIAL DE TRABAJOS
 
-📅 RECIENTES:
-• Cosecha de Café - Completado ✅ (⭐⭐⭐⭐⭐)
+RECIENTES:
+• Cosecha de Café - Completado ✅
 • Siembra de Maíz - En progreso 🔄
-• Fumigación - Completado ✅ (⭐⭐⭐⭐⭐)
-• Recolección Frutas - Completado ✅ (⭐⭐⭐⭐)
+• Fumigación - Completado ✅
+• Recolección - Completado ✅
 
-📊 ESTADÍSTICAS DEL MES:
-• Trabajos completados: 4
-• Trabajadores satisfechos: 12/12
-• Puntuación promedio: 4.8/5
-
-🏆 LOGROS:
-• Agricultor confiable (15+ trabajos)
-• Respuesta rápida (< 2h promedio)
-• Excelente calificación (4.8/5)`);
+Total de trabajos: 15
+Calificación promedio: 4.8/5 ⭐`);
     }, 500);
 }
 
-/**
- * Ver soporte
- */
 function viewSupport() {
     showStatusMessage('Contactando soporte...', 'info');
-    
     setTimeout(() => {
         alert(`🆘 SOPORTE AGROMATCH
 
-📞 CONTACTO DIRECTO:
+📞 CONTACTO:
 • Teléfono: +57 300 123 4567
 • WhatsApp: +57 300 123 4567
 • Email: soporte@agromatch.com
 
-💬 CHAT EN LÍNEA:
-• Disponible: 24/7
-• Tiempo de respuesta: < 15 min
-
-🕐 HORARIO TELEFÓNICO:
-• Lunes a Domingo: 6:00 AM - 10:00 PM
-
-📖 RECURSOS:
-• FAQ: agromatch.com/ayuda
-• Tutoriales: agromatch.com/tutoriales
-• Guía del agricultor: agromatch.com/guia`);
+💬 Horario: 24/7
+⏰ Respuesta: < 15 minutos`);
     }, 500);
 }
 
-// ================================================================
-// FUNCIÓN DE LOGOUT CON MODAL DE CONFIRMACIÓN
-// ================================================================
-
-/**
- * Confirmar logout
- */
 function confirmLogout() {
-    createLogoutModal();
-}
-
-/**
- * Crear modal de logout
- */
-function createLogoutModal() {
-    const modal = document.createElement('div');
-    modal.className = 'modal-backdrop';
-    modal.innerHTML = `
-        <div class="modal-content">
-            <div style="font-size: 50px; margin-bottom: 15px;">🚪</div>
-            <h3 style="color: #1e3a2e; margin-bottom: 10px;">Cerrar Sesión</h3>
-            <p style="color: #64748b; margin-bottom: 25px;">
-                ¿Estás seguro de que deseas cerrar sesión, ${currentUser.firstName}?
-            </p>
-            <div class="modal-actions">
-                <button class="modal-btn modal-btn-cancel" onclick="closeLogoutModal()">
-                    Cancelar
-                </button>
-                <button class="modal-btn modal-btn-confirm" onclick="executeLogout()">
-                    Sí, Cerrar Sesión
-                </button>
-            </div>
-        </div>
-    `;
-    
-    document.body.appendChild(modal);
-    
-    setTimeout(() => {
-        modal.classList.add('show');
-    }, 10);
-    
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
-            closeLogoutModal();
-        }
-    });
-}
-
-/**
- * Cerrar modal de logout
- */
-function closeLogoutModal() {
-    const modal = document.querySelector('.modal-backdrop');
-    if (modal) {
-        modal.classList.remove('show');
-        setTimeout(() => {
-            document.body.removeChild(modal);
-        }, 300);
+    if (confirm(`¿Seguro que deseas cerrar sesión, ${currentUser.firstName}?`)) {
+        executeLogout();
     }
 }
 
-/**
- * Ejecutar logout con integración Python
- */
 async function executeLogout() {
-    closeLogoutModal();
     showStatusMessage('Cerrando sesión...', 'info');
     
     try {
-        console.log('🔄 Enviando solicitud de logout al servidor...');
-        
         const response = await fetch('/logout', {
             method: 'POST',
+            credentials: 'include'
+        });
+        
+        if (response.ok) {
+            showStatusMessage('¡Hasta pronto!', 'success');
+            setTimeout(() => {
+                window.location.href = '/vista/login-trabajador.html';
+            }, 1500);
+        } else {
+            throw new Error('Error en logout');
+        }
+    } catch (error) {
+        console.error('Error en logout:', error);
+        showStatusMessage('Sesión cerrada localmente', 'warning');
+        setTimeout(() => {
+            window.location.href = '/vista/login-trabajador.html';
+        }, 1500);
+    }
+}
+
+// ================================================================
+// GESTIÓN DE OFERTAS - FUNCIONALIDAD PRINCIPAL
+// ================================================================
+
+/**
+ * Cargar ofertas del agricultor desde el backend
+ */
+async function cargarOfertasDelAgricultor() {
+    try {
+        console.log('🔄 Cargando ofertas del agricultor...');
+        
+        const response = await fetch('/api/get_farmer_jobs', {
+            method: 'GET',
             credentials: 'include',
             headers: {
                 'Content-Type': 'application/json',
@@ -520,245 +478,670 @@ async function executeLogout() {
         
         if (response.ok) {
             const data = await response.json();
-            console.log('✅ Logout exitoso:', data);
             
-            // Limpiar datos locales
-            currentUser.isLoggedIn = false;
-            
-            showStatusMessage(`¡Hasta pronto, ${currentUser.firstName}! 👋`, 'success');
-            
-            // Redirigir después de un momento
-            setTimeout(() => {
-                // Determinar a qué login redirigir según el rol
-                if (currentUser.role === 'Agricultor') {
-                    window.location.href = '/vista/login-trabajador.html';
-                } else {
-                    window.location.href = '/vista/login-trabajador.html';
-                }
-            }, 2000);
+            if (data.success) {
+                ofertasData = data.ofertas || [];
+                mostrarOfertasEnDashboard(ofertasData);
+                actualizarEstadisticas(data.estadisticas);
+                console.log(`✅ ${ofertasData.length} ofertas cargadas`);
+            } else {
+                throw new Error(data.message || 'Error al cargar ofertas');
+            }
         } else {
             throw new Error(`Error del servidor: ${response.status}`);
         }
+        
     } catch (error) {
-        console.error('❌ Error en logout:', error);
-        
-        // En caso de error, limpiar datos locales y redirigir de todos modos
-        showStatusMessage('Sesión cerrada localmente', 'warning');
-        currentUser.isLoggedIn = false;
-        
-        setTimeout(() => {
-            if (currentUser.role === 'Agricultor') {
-                window.location.href = '/vista/login-trabajador.html';
-            } else {
-                window.location.href = '/vista/login-trabajador.html';
-            }
-        }, 1500);
+        console.error('❌ Error cargando ofertas:', error);
+        showStatusMessage('Error al cargar ofertas', 'error');
+        // Mostrar mensaje de no ofertas
+        mostrarOfertasEnDashboard([]);
     }
 }
 
+/**
+ * Mostrar ofertas en el dashboard
+ */
+function mostrarOfertasEnDashboard(ofertas) {
+    const container = document.getElementById('ofertasContainer');
+    
+    if (!container) {
+        console.error('❌ No se encontró el contenedor de ofertas');
+        return;
+    }
+    
+    // Limpiar contenedor
+    container.innerHTML = '';
+    
+    if (ofertas.length === 0) {
+        container.innerHTML = `
+            <div class="section-title" style="margin: 30px 0 20px 0;">
+                <i class="fas fa-clipboard-list"></i>
+                Mis Ofertas Publicadas
+            </div>
+            <div class="no-ofertas">
+                <div style="text-align: center; padding: 40px; color: #64748b;">
+                    <div style="font-size: 48px; margin-bottom: 15px; color: #4a7c59;">
+                        <i class="fas fa-seedling"></i>
+                    </div>
+                    <h3 style="color: #1e3a2e; margin-bottom: 10px;">No tienes ofertas publicadas</h3>
+                    <p>Crea tu primera oferta para encontrar trabajadores.</p>
+                    <button class="btn btn-primary" onclick="createNewOffer()" style="margin-top: 15px;">
+                        <i class="fas fa-plus"></i> Crear Primera Oferta
+                    </button>
+                </div>
+            </div>
+        `;
+        return;
+    }
+    
+    // Agregar título de sección
+    container.innerHTML = `
+        <div class="section-title" style="margin: 30px 0 20px 0;">
+            <i class="fas fa-clipboard-list"></i>
+            Mis Ofertas Publicadas (${ofertas.length})
+        </div>
+    `;
+    
+    // Crear tarjetas para cada oferta
+    ofertas.forEach(oferta => {
+        const ofertaCard = crearTarjetaOferta(oferta);
+        container.appendChild(ofertaCard);
+    });
+}
+
+/**
+ * Crear tarjeta HTML para una oferta
+ */
+function crearTarjetaOferta(oferta) {
+    const div = document.createElement('div');
+    div.className = 'offer-card';
+    
+    // Calcular días desde publicación
+    const fechaPublicacion = new Date(oferta.fecha_publicacion);
+    const ahora = new Date();
+    const diasPublicada = Math.floor((ahora - fechaPublicacion) / (1000 * 60 * 60 * 24));
+    
+    // Obtener estado visual
+    const estadoInfo = obtenerEstadoOferta(oferta.estado);
+    
+    div.innerHTML = `
+        <div class="offer-header">
+            <div class="offer-title">${oferta.titulo}</div>
+            <div class="offer-actions">
+                <button class="btn-icon" onclick="editarOferta(${oferta.id_oferta})" title="Editar oferta">
+                    <i class="fas fa-edit"></i>
+                </button>
+                <button class="btn-icon btn-icon-delete" onclick="eliminarOferta(${oferta.id_oferta}, '${oferta.titulo}')" title="Eliminar oferta">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        </div>
+        
+        <div class="offer-details">
+            <p class="offer-description">${oferta.descripcion}</p>
+            
+            <div class="offer-meta">
+                <div class="offer-meta-item">
+                    <i class="fas fa-dollar-sign"></i>
+                    <span><strong>${Number(oferta.pago_ofrecido).toLocaleString()} COP</strong></span>
+                </div>
+                
+                <div class="offer-meta-item">
+                    <i class="fas fa-calendar"></i>
+                    <span>Hace ${diasPublicada === 0 ? 'hoy' : diasPublicada + ' día' + (diasPublicada > 1 ? 's' : '')}</span>
+                </div>
+                
+                <div class="offer-meta-item">
+                    <i class="fas fa-users"></i>
+                    <span>${oferta.num_postulaciones || 0} postulaciones</span>
+                </div>
+                
+                ${oferta.ubicacion ? `
+                <div class="offer-meta-item">
+                    <i class="fas fa-map-marker-alt"></i>
+                    <span>${oferta.ubicacion}</span>
+                </div>` : ''}
+            </div>
+        </div>
+        
+        <div class="offer-footer">
+            <div class="offer-status">
+                <span class="status-badge ${estadoInfo.clase}">${estadoInfo.texto}</span>
+            </div>
+            
+            <div class="offer-actions">
+                <button class="btn btn-secondary" onclick="verPostulaciones(${oferta.id_oferta}, ${oferta.num_postulaciones || 0})">
+                    <i class="fas fa-eye"></i> 
+                    Ver Postulaciones (${oferta.num_postulaciones || 0})
+                </button>
+                
+                ${oferta.estado === 'Abierta' ? 
+                    `<button class="btn btn-outline" onclick="cerrarOferta(${oferta.id_oferta}, '${oferta.titulo}')">
+                        <i class="fas fa-times-circle"></i> Cerrar Oferta
+                    </button>` : 
+                    ''
+                }
+            </div>
+        </div>
+    `;
+    
+    return div;
+}
+
+/**
+ * Obtener información visual del estado
+ */
+function obtenerEstadoOferta(estado) {
+    switch(estado) {
+        case 'Abierta':
+            return { clase: 'status-active', texto: 'Activa' };
+        case 'En Proceso':
+            return { clase: 'status-progress', texto: 'En Proceso' };
+        case 'Cerrada':
+            return { clase: 'status-closed', texto: 'Cerrada' };
+        default:
+            return { clase: 'status-inactive', texto: estado };
+    }
+}
+
+/**
+ * Actualizar estadísticas del dashboard
+ */
+function actualizarEstadisticas(estadisticas) {
+    if (!estadisticas) return;
+    
+    const ofertasActivasEl = document.getElementById('ofertasActivas');
+    const trabajadoresContratadosEl = document.getElementById('trabajadoresContratados');
+    
+    if (ofertasActivasEl) {
+        ofertasActivasEl.textContent = estadisticas.ofertas_activas || ofertasData.length;
+    }
+    
+    if (trabajadoresContratadosEl) {
+        trabajadoresContratadosEl.textContent = estadisticas.trabajadores_contratados || 0;
+    }
+    
+    console.log('✅ Estadísticas actualizadas');
+}
+
 // ================================================================
-// FUNCIONES DEL DASHBOARD
+// CREAR NUEVA OFERTA
 // ================================================================
+
+/**
+ * Abrir modal para crear nueva oferta
+ */
+function createNewOffer() {
+    console.log('🔄 Abriendo modal crear oferta...');
+    abrirModalOferta();
+}
+
+/**
+ * Abrir modal de crear oferta
+ */
+function abrirModalOferta() {
+    const modal = document.getElementById('modalCrearOferta');
+    if (modal) {
+        modal.classList.add('show');
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+        
+        // Enfocar primer campo
+        setTimeout(() => {
+            const tituloInput = document.getElementById('tituloOferta');
+            if (tituloInput) tituloInput.focus();
+        }, 300);
+        
+        console.log('✅ Modal crear oferta abierto');
+    }
+}
+
+/**
+ * Cerrar modal de crear oferta
+ */
+function cerrarModalOferta() {
+    const modal = document.getElementById('modalCrearOferta');
+    if (modal) {
+        modal.classList.remove('show');
+        setTimeout(() => {
+            modal.style.display = 'none';
+            document.body.style.overflow = 'auto';
+            
+            // Limpiar formulario
+            const form = document.getElementById('formCrearOferta');
+            if (form) form.reset();
+            
+            // Resetear botón
+            const btnCrear = document.getElementById('btnCrearOferta');
+            if (btnCrear) {
+                btnCrear.disabled = false;
+                btnCrear.innerHTML = '<i class="fas fa-check"></i> Crear Oferta';
+            }
+        }, 300);
+        
+        console.log('✅ Modal crear oferta cerrado');
+    }
+}
 
 /**
  * Crear nueva oferta
  */
-function createNewOffer() {
-    const button = event.target;
-    const originalText = button.innerHTML;
-    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creando...';
-    button.disabled = true;
+async function crearOferta(event) {
+    event.preventDefault();
+    console.log('🔄 Creando nueva oferta...');
     
-    setTimeout(() => {
-        showStatusMessage('Redirigiendo al formulario de nueva oferta...', 'info');
-        button.innerHTML = originalText;
-        button.disabled = false;
-        // En tu app real: window.location.href = '/vista/crear-oferta.html';
-    }, 2000);
-}
-
-/**
- * Ver postulaciones
- */
-function viewApplications(button, count) {
-    const originalText = button.innerHTML;
-    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cargando...';
-    button.disabled = true;
+    const btnCrear = document.getElementById('btnCrearOferta');
+    const form = event.target;
+    const formData = new FormData(form);
     
-    setTimeout(() => {
-        showStatusMessage(`Mostrando ${count} postulaciones`, 'info');
-        button.innerHTML = originalText;
-        button.disabled = false;
-        // En tu app real: window.location.href = `postulaciones.html?count=${count}`;
-    }, 1500);
-}
-
-/**
- * Ver progreso del trabajo
- */
-function viewProgress(button) {
-    const originalText = button.innerHTML;
-    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cargando...';
-    button.disabled = true;
+    // Obtener datos del formulario
+    const ofertaData = {
+        titulo: formData.get('titulo').trim(),
+        descripcion: formData.get('descripcion').trim(),
+        pago: parseInt(formData.get('pago')),
+        ubicacion: formData.get('ubicacion').trim()
+    };
     
-    setTimeout(() => {
-        showStatusMessage('Mostrando progreso del trabajo...', 'info');
-        button.innerHTML = originalText;
-        button.disabled = false;
-        // En tu app real: window.location.href = '/vista/progreso-trabajo.html';
-    }, 1500);
+    // Validaciones
+    if (!ofertaData.titulo || ofertaData.titulo.length < 10) {
+        showStatusMessage('El título debe tener al menos 10 caracteres', 'error');
+        return;
+    }
+    
+    if (!ofertaData.descripcion || ofertaData.descripcion.length < 20) {
+        showStatusMessage('La descripción debe tener al menos 20 caracteres', 'error');
+        return;
+    }
+    
+    if (!ofertaData.pago || ofertaData.pago < 10000) {
+        showStatusMessage('El pago mínimo debe ser $10,000 COP', 'error');
+        return;
+    }
+    
+    // Cambiar estado del botón
+    btnCrear.disabled = true;
+    btnCrear.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creando...';
+    
+    try {
+        const response = await fetch('/api/crear_oferta', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify(ofertaData)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Éxito
+            btnCrear.innerHTML = '<i class="fas fa-check"></i> ¡Creada!';
+            showStatusMessage(`Oferta "${ofertaData.titulo}" creada exitosamente!`, 'success');
+            
+            // Cerrar modal y recargar ofertas
+            setTimeout(() => {
+                cerrarModalOferta();
+                cargarOfertasDelAgricultor(); // Recargar ofertas
+            }, 1500);
+            
+        } else {
+            throw new Error(result.message || 'Error al crear la oferta');
+        }
+        
+    } catch (error) {
+        console.error('❌ Error creando oferta:', error);
+        
+        // Restaurar botón
+        btnCrear.disabled = false;
+        btnCrear.innerHTML = '<i class="fas fa-check"></i> Crear Oferta';
+        
+        showStatusMessage('Error: ' + error.message, 'error');
+    }
 }
 
-/**
- * Mostrar notificaciones
- */
-function showNotifications() {
-    showStatusMessage('Abriendo panel de notificaciones...', 'info');
-    setTimeout(() => {
-        alert(`🔔 NOTIFICACIONES RECIENTES:
-
-📝 NUEVAS POSTULACIONES:
-• 2 trabajadores aplicaron a "Cosecha de Café"
-• 1 trabajador aplicó a "Siembra de Maíz"
-
-⏰ RECORDATORIOS:
-• Contrato de recolección termina mañana
-• Revisar progreso de fumigación
-
-⭐ CALIFICACIONES:
-• Juan Pérez completó su trabajo (5⭐)
-• María García calificó tu trabajo (4⭐)
-
-💰 PAGOS:
-• Pago pendiente: $150,000 COP`);
-    }, 800);
-}
+// ================================================================
+// EDITAR OFERTA
+// ================================================================
 
 /**
- * Abrir mapa - MODIFICADA PARA USAR LEAFLET
+ * Abrir modal para editar oferta
  */
-function openMap() {
-    showStatusMessage('Mapa interactivo ya disponible abajo...', 'info');
-    // Hacer scroll al mapa
-    const mapElement = document.getElementById('map');
-    if (mapElement) {
-        mapElement.scrollIntoView({ behavior: 'smooth' });
+async function editarOferta(ofertaId) {
+    console.log(`✏️ Editando oferta ${ofertaId}`);
+    
+    // Buscar la oferta en los datos locales
+    const oferta = ofertasData.find(o => o.id_oferta === ofertaId);
+    
+    if (!oferta) {
+        showStatusMessage('Oferta no encontrada', 'error');
+        return;
+    }
+    
+    // Llenar el formulario de edición
+    document.getElementById('editOfertaId').value = oferta.id_oferta;
+    document.getElementById('editTituloOferta').value = oferta.titulo;
+    document.getElementById('editDescripcionOferta').value = oferta.descripcion;
+    document.getElementById('editPagoOferta').value = oferta.pago_ofrecido;
+    document.getElementById('editUbicacionOferta').value = oferta.ubicacion || '';
+    
+    // Mostrar modal
+    const modal = document.getElementById('modalEditarOferta');
+    if (modal) {
+        modal.classList.add('show');
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+        
+        console.log('✅ Modal editar oferta abierto');
     }
 }
 
 /**
- * Manejar notificación
+ * Cerrar modal de editar oferta
  */
-function handleNotification(element) {
-    element.style.opacity = '0.7';
-    element.style.transform = 'translateX(10px)';
+function cerrarModalEditar() {
+    const modal = document.getElementById('modalEditarOferta');
+    if (modal) {
+        modal.classList.remove('show');
+        setTimeout(() => {
+            modal.style.display = 'none';
+            document.body.style.overflow = 'auto';
+            
+            // Limpiar formulario
+            const form = document.getElementById('formEditarOferta');
+            if (form) form.reset();
+        }, 300);
+        
+        console.log('✅ Modal editar oferta cerrado');
+    }
+}
+
+/**
+ * Guardar edición de oferta
+ */
+async function guardarEdicion(event) {
+    event.preventDefault();
+    console.log('💾 Guardando edición de oferta...');
     
-    setTimeout(() => {
-        element.style.opacity = '1';
-        element.style.transform = 'translateX(0)';
-        showStatusMessage('Notificación marcada como leída', 'success');
-    }, 200);
+    const btnGuardar = document.getElementById('btnGuardarEdicion');
+    const form = event.target;
+    const formData = new FormData(form);
+    
+    const ofertaData = {
+        ofertaId: parseInt(formData.get('ofertaId')),
+        titulo: formData.get('titulo').trim(),
+        descripcion: formData.get('descripcion').trim(),
+        pago: parseInt(formData.get('pago')),
+        ubicacion: formData.get('ubicacion').trim()
+    };
+    
+    // Validaciones
+    if (!ofertaData.titulo || ofertaData.titulo.length < 10) {
+        showStatusMessage('El título debe tener al menos 10 caracteres', 'error');
+        return;
+    }
+    
+    if (!ofertaData.descripcion || ofertaData.descripcion.length < 20) {
+        showStatusMessage('La descripción debe tener al menos 20 caracteres', 'error');
+        return;
+    }
+    
+    if (!ofertaData.pago || ofertaData.pago < 10000) {
+        showStatusMessage('El pago mínimo debe ser $10,000 COP', 'error');
+        return;
+    }
+    
+    // Cambiar estado del botón
+    btnGuardar.disabled = true;
+    btnGuardar.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
+    
+    try {
+        const response = await fetch(`/api/edit_job/${ofertaData.ofertaId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify(ofertaData)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            btnGuardar.innerHTML = '<i class="fas fa-check"></i> ¡Guardado!';
+            showStatusMessage('Oferta actualizada exitosamente!', 'success');
+            
+            // Cerrar modal y recargar ofertas
+            setTimeout(() => {
+                cerrarModalEditar();
+                cargarOfertasDelAgricultor();
+            }, 1500);
+            
+        } else {
+            throw new Error(result.message || 'Error al actualizar la oferta');
+        }
+        
+    } catch (error) {
+        console.error('❌ Error actualizando oferta:', error);
+        
+        // Restaurar botón
+        btnGuardar.disabled = false;
+        btnGuardar.innerHTML = '<i class="fas fa-save"></i> Guardar Cambios';
+        
+        showStatusMessage('Error: ' + error.message, 'error');
+    }
 }
 
 // ================================================================
-// NUEVA FUNCIÓN PARA INICIALIZAR LEAFLET MAP (REEMPLAZA GOOGLE MAPS)
+// ELIMINAR Y CERRAR OFERTAS
+// ================================================================
+
+/**
+ * Eliminar oferta
+ */
+async function eliminarOferta(ofertaId, titulo) {
+    const confirmar = confirm(`¿Estás seguro de que deseas eliminar la oferta "${titulo}"?\n\nEsta acción no se puede deshacer.`);
+    
+    if (!confirmar) return;
+    
+    try {
+        console.log(`🗑️ Eliminando oferta ${ofertaId}`);
+        
+        const response = await fetch(`/api/delete_job/${ofertaId}`, {
+            method: 'DELETE',
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showStatusMessage('Oferta eliminada exitosamente', 'success');
+            // Recargar ofertas
+            cargarOfertasDelAgricultor();
+        } else {
+            throw new Error(data.message || 'Error al eliminar la oferta');
+        }
+        
+    } catch (error) {
+        console.error('❌ Error eliminando oferta:', error);
+        showStatusMessage('Error al eliminar la oferta', 'error');
+    }
+}
+
+/**
+ * Cerrar oferta
+ */
+async function cerrarOferta(ofertaId, titulo) {
+    const confirmar = confirm(`¿Deseas cerrar la oferta "${titulo}"?\n\nNo recibirás más postulaciones.`);
+    
+    if (!confirmar) return;
+    
+    try {
+        console.log(`🔒 Cerrando oferta ${ofertaId}`);
+        
+        const response = await fetch(`/api/close_job/${ofertaId}`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showStatusMessage('Oferta cerrada exitosamente', 'success');
+            // Recargar ofertas
+            cargarOfertasDelAgricultor();
+        } else {
+            throw new Error(data.message || 'Error al cerrar la oferta');
+        }
+        
+    } catch (error) {
+        console.error('❌ Error cerrando oferta:', error);
+        showStatusMessage('Error al cerrar la oferta', 'error');
+    }
+}
+
+/**
+ * Ver postulaciones de una oferta
+ */
+function verPostulaciones(ofertaId, numPostulaciones) {
+    console.log(`👥 Viendo postulaciones para oferta ${ofertaId}`);
+    
+    if (numPostulaciones === 0) {
+        showStatusMessage('Esta oferta no tiene postulaciones aún', 'info');
+        return;
+    }
+    
+    // Simular carga de postulaciones
+    showStatusMessage(`Cargando ${numPostulaciones} postulaciones...`, 'info');
+    
+    setTimeout(() => {
+        alert(`📋 POSTULACIONES (${numPostulaciones})
+
+👤 Juan Pérez - 4.9/5 ⭐
+   📱 +57 300 123 4567
+   💼 5 años experiencia
+
+👤 María García - 4.7/5 ⭐  
+   📱 +57 301 234 5678
+   💼 3 años experiencia
+
+👤 Carlos López - 4.8/5 ⭐
+   📱 +57 302 345 6789
+   💼 4 años experiencia
+
+Para contactar directamente, usa los números de teléfono.`);
+    }, 1000);
+}
+
+// ================================================================
+// MAPA CON LEAFLET
 // ================================================================
 
 /**
  * Inicializar mapa con Leaflet
  */
 function initMap() {
-    console.log('Inicializando mapa con Leaflet...');
+    console.log('🗺️ Inicializando mapa...');
     
     const mapElement = document.getElementById("map");
     if (!mapElement) {
-        console.error('Elemento del mapa no encontrado');
+        console.error('❌ Elemento del mapa no encontrado');
         return;
     }
     
     try {
-        // Coordenadas de la finca (Chinchiná, Caldas)
+        // Coordenadas de Colombia (Chinchiná, Caldas)
         const fincaLocation = [5.0056, -75.6063];
         
-        // Crear el mapa con Leaflet
+        // Crear el mapa
         map = L.map('map').setView(fincaLocation, 13);
         
-        // Agregar tiles de OpenStreetMap (gratis)
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        // Agregar tiles de OpenStreetMap
+        L.tileLayer('https://{s}.tile.openstreetMap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors',
             maxZoom: 18,
         }).addTo(map);
         
-        // Trabajadores disponibles con ubicaciones
-        const availableWorkers = [
-            { lat: 5.0156, lng: -75.6163, name: "Juan Pérez", experience: "Café", rating: 4.9 },
-            { lat: 4.9956, lng: -75.5963, name: "María García", experience: "Siembra", rating: 4.8 },
-            { lat: 5.0256, lng: -75.5863, name: "Carlos López", experience: "Fumigación", rating: 4.7 },
-            { lat: 4.9856, lng: -75.6263, name: "Ana Rodríguez", experience: "Cosecha", rating: 4.6 },
-            { lat: 5.0356, lng: -75.6463, name: "Luis Martínez", experience: "Mantenimiento", rating: 4.8 }
-        ];
-        
-        // Icono personalizado para la finca
+        // Marcador de la finca
         const fincaIcon = L.divIcon({
-            className: 'custom-finca-marker',
-            html: '<div style="background-color: #4a7c59; width: 30px; height: 30px; border-radius: 50%; border: 4px solid #fff; box-shadow: 0 3px 8px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center;"><i class="fas fa-home" style="color: white; font-size: 14px;"></i></div>',
+            className: 'custom-marker',
+            html: '<div style="background: #4a7c59; width: 30px; height: 30px; border-radius: 50%; border: 3px solid white; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"><i class="fas fa-home" style="color: white; font-size: 14px;"></i></div>',
             iconSize: [30, 30],
             iconAnchor: [15, 15]
         });
         
-        // Icono personalizado para trabajadores
+        L.marker(fincaLocation, { icon: fincaIcon }).addTo(map)
+            .bindPopup(`
+                <div style="text-align: center; padding: 10px;">
+                    <h4 style="margin: 0 0 5px 0; color: #4a7c59;">Tu Finca</h4>
+                    <p style="margin: 0; color: #666;">Chinchiná, Caldas</p>
+                </div>
+            `);
+        
+        // Trabajadores disponibles
+        const trabajadores = [
+            { lat: 5.0156, lng: -75.6163, name: "Juan Pérez", rating: 4.9 },
+            { lat: 4.9956, lng: -75.5963, name: "María García", rating: 4.8 },
+            { lat: 5.0256, lng: -75.5863, name: "Carlos López", rating: 4.7 },
+            { lat: 4.9856, lng: -75.6263, name: "Ana Rodríguez", rating: 4.6 }
+        ];
+        
         const workerIcon = L.divIcon({
-            className: 'custom-worker-marker',
-            html: '<div style="background-color: #dc2626; width: 25px; height: 25px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center;"><i class="fas fa-user" style="color: white; font-size: 10px;"></i></div>',
+            className: 'custom-marker',
+            html: '<div style="background: #dc2626; width: 25px; height: 25px; border-radius: 50%; border: 3px solid white; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"><i class="fas fa-user" style="color: white; font-size: 10px;"></i></div>',
             iconSize: [25, 25],
             iconAnchor: [12, 12]
         });
         
-        // Agregar marcador de la finca
-        L.marker(fincaLocation, { icon: fincaIcon }).addTo(map)
-            .bindPopup(`
-                <div style="padding: 10px; font-family: 'Segoe UI', sans-serif; min-width: 160px; text-align: center;">
-                    <h4 style="margin: 0 0 8px 0; color: #1e3a2e; font-size: 14px;">Tu Finca</h4>
-                    <p style="margin: 0 0 6px 0; color: #4a7c59; font-weight: bold; font-size: 12px;">Vereda El Paraíso</p>
-                    <p style="margin: 0; color: #64748b; font-size: 11px;">Chinchiná, Caldas</p>
-                </div>
-            `);
-        
-        // Agregar marcadores para trabajadores disponibles
-        availableWorkers.forEach((worker, index) => {
-            const marker = L.marker([worker.lat, worker.lng], { icon: workerIcon }).addTo(map);
-            
-            // Crear estrellas para la calificación
-            const stars = '★'.repeat(Math.floor(worker.rating)) + '☆'.repeat(5 - Math.floor(worker.rating));
-            
-            // Popup con información del trabajador
-            const popupContent = `
-                <div style="padding: 10px; font-family: 'Segoe UI', sans-serif; min-width: 180px;">
-                    <h4 style="margin: 0 0 6px 0; color: #1e3a2e; font-size: 13px;">${worker.name}</h4>
-                    <p style="margin: 0 0 4px 0; color: #4a7c59; font-weight: bold; font-size: 11px;">Especialidad: ${worker.experience}</p>
-                    <p style="margin: 0 0 8px 0; color: #f59e0b; font-size: 11px;">${stars} ${worker.rating}/5</p>
-                    <button onclick="contactWorker('${worker.name}')" style="
-                        background: linear-gradient(135deg, #4a7c59, #1e3a2e);
-                        color: white;
-                        border: none;
-                        padding: 6px 12px;
-                        border-radius: 5px;
-                        cursor: pointer;
-                        font-size: 11px;
-                        font-weight: 600;
-                        width: 100%;
-                    ">Contactar</button>
-                </div>
-            `;
-            
-            marker.bindPopup(popupContent);
+        trabajadores.forEach(trabajador => {
+            L.marker([trabajador.lat, trabajador.lng], { icon: workerIcon }).addTo(map)
+                .bindPopup(`
+                    <div style="text-align: center; padding: 10px;">
+                        <h4 style="margin: 0 0 5px 0; color: #1e3a2e;">${trabajador.name}</h4>
+                        <p style="margin: 0 0 5px 0; color: #f59e0b;">⭐ ${trabajador.rating}/5</p>
+                        <button onclick="contactWorker('${trabajador.name}')" style="
+                            background: #4a7c59; 
+                            color: white; 
+                            border: none; 
+                            padding: 5px 10px; 
+                            border-radius: 5px; 
+                            cursor: pointer;
+                            font-size: 12px;
+                        ">Contactar</button>
+                    </div>
+                `);
         });
         
-        console.log('Mapa inicializado correctamente con Leaflet');
+        console.log('✅ Mapa inicializado correctamente');
         
     } catch (error) {
-        console.error('Error inicializando el mapa:', error);
-        handleMapError();
+        console.error('❌ Error inicializando mapa:', error);
+        // Mostrar mensaje de error en el mapa
+        mapElement.innerHTML = `
+            <div style="
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 100%;
+                background: #f8f9fa;
+                border-radius: 15px;
+                color: #6c757d;
+                text-align: center;
+            ">
+                <div>
+                    <i class="fas fa-map-marked-alt" style="font-size: 48px; margin-bottom: 10px; color: #4a7c59;"></i>
+                    <div><strong>Mapa no disponible</strong></div>
+                    <small>4 trabajadores en el área</small>
+                </div>
+            </div>
+        `;
     }
 }
 
@@ -768,55 +1151,62 @@ function initMap() {
 function contactWorker(workerName) {
     showStatusMessage(`Contactando a ${workerName}...`, 'info');
     setTimeout(() => {
-        alert(`📞 CONTACTANDO A ${workerName.toUpperCase()}:
+        alert(`📞 CONTACTANDO A ${workerName}
 
-✅ Mensaje enviado exitosamente
+✅ Mensaje enviado
 📱 El trabajador recibirá tu solicitud
-⏰ Tiempo de respuesta estimado: 2-4 horas
+⏰ Respuesta estimada: 2-4 horas
 
-💬 Tu mensaje:
-"Hola ${workerName}, estoy interesado en contratarte para trabajos en mi finca. ¿Podrías contactarme?"
-
-📧 También se envió notificación por email
-📲 Recibirás una respuesta en tu panel de notificaciones`);
-    }, 1500);
-}
-
-/**
- * Función para manejar errores del mapa
- */
-function handleMapError() {
-    console.error('Error cargando el mapa');
-    const mapElement = document.getElementById("map");
-    if (mapElement) {
-        mapElement.innerHTML = `
-            <div style="
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                height: 100%;
-                background: linear-gradient(135deg, rgba(144, 238, 144, 0.2), rgba(74, 124, 89, 0.1));
-                border-radius: 15px;
-                color: #1e3a2e;
-                text-align: center;
-                padding: 20px;
-            ">
-                <div>
-                    <div style="font-size: 48px; margin-bottom: 15px; color: #4a7c59;">
-                        <i class="fas fa-map-marked-alt"></i>
-                    </div>
-                    <strong style="font-size: 16px; color: #1e3a2e;">Mapa no disponible</strong><br>
-                    <small style="color: #4a7c59; font-size: 14px; display: block; margin-top: 5px;">
-                        📍 5 trabajadores en 10km de radio
-                    </small>
-                </div>
-            </div>
-        `;
-    }
+Tu mensaje:
+"Hola ${workerName}, tengo trabajo disponible en mi finca. ¿Te interesa?"`);
+    }, 1000);
 }
 
 // ================================================================
-// FUNCIÓN PARA MOSTRAR MENSAJES DE ESTADO
+// NOTIFICACIONES
+// ================================================================
+
+/**
+ * Mostrar notificaciones
+ */
+function showNotifications() {
+    showStatusMessage('Cargando notificaciones...', 'info');
+    setTimeout(() => {
+        alert(`🔔 NOTIFICACIONES RECIENTES
+
+📝 NUEVAS POSTULACIONES:
+• 2 trabajadores aplicaron a "Cosecha de Café"
+• 1 trabajador aplicó a "Siembra de Maíz"
+
+⏰ RECORDATORIOS:
+• Revisar progreso de trabajos activos
+• Calificar trabajadores completados
+
+⭐ CALIFICACIONES:
+• Juan Pérez completó trabajo (5⭐)
+• Tienes 1 calificación pendiente
+
+💰 PAGOS:
+• Pago pendiente: $150,000 COP`);
+    }, 500);
+}
+
+/**
+ * Manejar click en notificación
+ */
+function handleNotification(element) {
+    element.style.opacity = '0.7';
+    element.style.transform = 'translateX(5px)';
+    
+    setTimeout(() => {
+        element.style.opacity = '1';
+        element.style.transform = 'translateX(0)';
+        showStatusMessage('Notificación marcada como leída', 'success');
+    }, 200);
+}
+
+// ================================================================
+// UTILIDADES
 // ================================================================
 
 /**
@@ -832,418 +1222,496 @@ function showStatusMessage(message, type = 'info') {
         border-radius: 10px;
         color: white;
         font-weight: 600;
-        z-index: 9999;
-        max-width: 300px;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        z-index: 99999;
+        max-width: 350px;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         animation: slideInRight 0.3s ease;
     `;
     
-    switch(type) {
-        case 'success':
-            messageElement.style.background = 'linear-gradient(135deg, #4a7c59, #1e3a2e)';
-            messageElement.innerHTML = `<i class="fas fa-check-circle" style="margin-right: 8px;"></i>${message}`;
-            break;
-        case 'error':
-            messageElement.style.background = 'linear-gradient(135deg, #dc2626, #991b1b)';
-            messageElement.innerHTML = `<i class="fas fa-exclamation-triangle" style="margin-right: 8px;"></i>${message}`;
-            break;
-        case 'warning':
-            messageElement.style.background = 'linear-gradient(135deg, #f59e0b, #d97706)';
-            messageElement.innerHTML = `<i class="fas fa-exclamation-circle" style="margin-right: 8px;"></i>${message}`;
-            break;
-        default:
-            messageElement.style.background = 'linear-gradient(135deg, #6366f1, #4f46e5)';
-            messageElement.innerHTML = `<i class="fas fa-info-circle" style="margin-right: 8px;"></i>${message}`;
-    }
+    const icons = {
+        success: 'fas fa-check-circle',
+        error: 'fas fa-exclamation-triangle', 
+        warning: 'fas fa-exclamation-circle',
+        info: 'fas fa-info-circle'
+    };
+    
+    const colors = {
+        success: 'linear-gradient(135deg, #22c55e, #16a34a)',
+        error: 'linear-gradient(135deg, #dc2626, #991b1b)',
+        warning: 'linear-gradient(135deg, #f59e0b, #d97706)',
+        info: 'linear-gradient(135deg, #3b82f6, #2563eb)'
+    };
+    
+    messageElement.style.background = colors[type] || colors.info;
+    messageElement.innerHTML = `<i class="${icons[type] || icons.info}" style="margin-right: 8px;"></i>${message}`;
     
     document.body.appendChild(messageElement);
     
-    // Remover mensaje después de 3 segundos
+    // Remover después de 4 segundos
     setTimeout(() => {
-        messageElement.style.animation = 'slideOutRight 0.3s ease';
-        setTimeout(() => {
-            if (document.body.contains(messageElement)) {
-                document.body.removeChild(messageElement);
-            }
-        }, 300);
-    }, 3000);
-}
-
-// ================================================================
-// EVENT LISTENERS Y INICIALIZACIÓN
-// ================================================================
-
-/**
- * Validar sesión periódicamente
- */
-function startSessionValidation() {
-    setInterval(async () => {
-        try {
-            const response = await fetch('/validate_session', {
-                method: 'GET',
-                credentials: 'include'
-            });
-            
-            if (!response.ok || !(await response.json()).valid) {
-                console.log('⚠️ Sesión inválida detectada');
-                handleNoSession();
-            }
-        } catch (error) {
-            console.log('⚠️ Error validando sesión:', error);
+        if (messageElement.parentNode) {
+            messageElement.style.animation = 'slideOutRight 0.3s ease';
+            setTimeout(() => {
+                if (messageElement.parentNode) {
+                    messageElement.parentNode.removeChild(messageElement);
+                }
+            }, 300);
         }
-    }, 300000); // Verificar cada 5 minutos
-}
-
-/**
- * Actualización en tiempo real de notificaciones
- */
-function startNotificationUpdates() {
-    setInterval(() => {
-        const badges = document.querySelectorAll('.notification-badge');
-        badges.forEach(badge => {
-            if (Math.random() > 0.98) { // 2% probabilidad
-                const currentCount = parseInt(badge.textContent);
-                badge.textContent = currentCount + 1;
-                
-                // Animación de nueva notificación
-                badge.style.animation = 'none';
-                setTimeout(() => {
-                    badge.style.animation = 'pulse 2s infinite';
-                }, 10);
-                
-                showStatusMessage('Nueva notificación recibida', 'info');
-            }
-        });
-    }, 10000); // Cada 10 segundos
+    }, 4000);
 }
 
 /**
  * Configurar event listeners
  */
 function setupEventListeners() {
-    // Event listeners para dropdown dinámico
+    // Cerrar dropdowns al hacer click fuera
     document.addEventListener('click', function(event) {
-        const dropdown = document.getElementById('dynamicProfileDropdown');
-        const profileBtn = document.getElementById('profileMenuBtn');
-        
-        if (dropdown && 
-            !dropdown.contains(event.target) && 
-            !profileBtn.contains(event.target)) {
-            closeDynamicDropdown();
+        // Cerrar menú de perfil si se hace click fuera
+        if (!event.target.closest('#profileMenuBtn') && !event.target.closest('#profileDropdown')) {
+            closeProfileMenu();
         }
     });
 
-    // Cerrar dropdown con overlay
-    const overlay = document.getElementById('overlay');
-    if (overlay) {
-        overlay.addEventListener('click', closeDynamicDropdown);
-    }
-
-    // Cerrar dropdown con tecla Escape
+    // Cerrar modales con ESC
     document.addEventListener('keydown', function(event) {
         if (event.key === 'Escape') {
-            closeDynamicDropdown();
+            cerrarModalOferta();
+            cerrarModalEditar();
+            closeProfileMenu();
         }
     });
 
-    // Manejo de errores globales
-    window.addEventListener('error', function(event) {
-        console.error('❌ Error en la aplicación:', event.error);
-        showStatusMessage('Ha ocurrido un error. Recargando...', 'error');
+    // Cerrar modales al hacer click en el overlay
+    document.getElementById('modalCrearOferta')?.addEventListener('click', function(event) {
+        if (event.target === this) {
+            cerrarModalOferta();
+        }
     });
 
-    window.addEventListener('unhandledrejection', function(event) {
-        console.error('❌ Promesa rechazada:', event.reason);
-        showStatusMessage('Error de conexión con el servidor', 'warning');
+    document.getElementById('modalEditarOferta')?.addEventListener('click', function(event) {
+        if (event.target === this) {
+            cerrarModalEditar();
+        }
     });
+
+    console.log('✅ Event listeners configurados');
 }
 
+// ================================================================
+// ESTILOS CSS DINÁMICOS
+// ================================================================
+
 /**
- * Animaciones de entrada
+ * Agregar estilos CSS dinámicos necesarios
  */
-function setupEntryAnimations() {
-    const cards = document.querySelectorAll('.offer-card, .stat-card, .notification-item');
-    cards.forEach((card, index) => {
-        card.style.opacity = '0';
-        card.style.transform = 'translateY(20px)';
+function addDynamicStyles() {
+    if (document.getElementById('dynamic-styles')) return;
+
+    const style = document.createElement('style');
+    style.id = 'dynamic-styles';
+    style.textContent = `
+        /* Estilos para modales */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
         
-        setTimeout(() => {
-            card.style.transition = 'all 0.5s ease';
-            card.style.opacity = '1';
-            card.style.transform = 'translateY(0)';
-        }, index * 100);
-    });
-}
-
-/**
- * Inyectar estilos CSS dinámicos para el dropdown
- */
-function injectDynamicStyles() {
-    const dynamicStyles = document.createElement('style');
-    dynamicStyles.textContent = `
-    .dynamic-dropdown-content {
-        background: white;
-        border-radius: 15px;
-        overflow: hidden;
-    }
-
-    .dynamic-dropdown-header {
-        padding: 20px;
-        background: linear-gradient(135deg, rgba(74, 124, 89, 0.1), rgba(144, 238, 144, 0.1));
-        border-bottom: 1px solid rgba(144, 238, 144, 0.2);
-        text-align: center;
-    }
-
-    .dynamic-dropdown-avatar {
-        width: 60px;
-        height: 60px;
-        border-radius: 50%;
-        background: linear-gradient(135deg, #4a7c59, #1e3a2e);
-        color: white;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 24px;
-        margin: 0 auto 12px;
-        box-shadow: 0 4px 15px rgba(74, 124, 89, 0.3);
-    }
-
-    .dynamic-dropdown-name {
-        font-size: 18px;
-        font-weight: 700;
-        color: #1e3a2e;
-        margin-bottom: 4px;
-    }
-
-    .dynamic-dropdown-role {
-        font-size: 14px;
-        color: #4a7c59;
-        font-weight: 500;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-    }
-
-    .dynamic-dropdown-menu {
-        padding: 8px 0;
-    }
-
-    .dynamic-dropdown-item {
-        display: flex;
-        align-items: center;
-        gap: 15px;
-        padding: 15px 20px;
-        color: #1e3a2e;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        border-bottom: 1px solid rgba(144, 238, 144, 0.1);
-        font-weight: 500;
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    }
-
-    .dynamic-dropdown-item:last-child {
-        border-bottom: none;
-    }
-
-    .dynamic-dropdown-item:hover {
-        background: linear-gradient(135deg, rgba(144, 238, 144, 0.1), rgba(74, 124, 89, 0.05));
-        color: #4a7c59;
-        padding-left: 25px;
-    }
-
-    .dynamic-dropdown-item .icon {
-        width: 20px;
-        text-align: center;
-        font-size: 16px;
-        color: #64748b;
-        transition: color 0.3s ease;
-        flex-shrink: 0;
-    }
-
-    .dynamic-dropdown-item:hover .icon {
-        color: #4a7c59;
-    }
-
-    .dynamic-dropdown-item.logout {
-        color: #dc2626;
-        border-top: 2px solid rgba(220, 38, 38, 0.1);
-        margin-top: 8px;
-    }
-
-    .dynamic-dropdown-item.logout:hover {
-        background: linear-gradient(135deg, rgba(220, 38, 38, 0.1), rgba(220, 38, 38, 0.05));
-        color: #dc2626;
-    }
-
-    .dynamic-dropdown-item.logout .icon {
-        color: #dc2626;
-    }
-
-    /* Responsive para dropdown dinámico */
-    @media (max-width: 768px) {
-        #dynamicProfileDropdown {
-            right: 10px !important;
-            left: 10px !important;
-            min-width: auto !important;
-            max-width: calc(100vw - 20px) !important;
-        }
-    }
-
-    /* Animaciones para mensajes */
-    @keyframes slideInRight {
-        from {
-            transform: translateX(100%);
-            opacity: 0;
-        }
-        to {
-            transform: translateX(0);
+        .modal-overlay.show {
             opacity: 1;
         }
-    }
-
-    @keyframes slideOutRight {
-        from {
-            transform: translateX(0);
-            opacity: 1;
+        
+        .modal-crear-oferta {
+            background: white;
+            border-radius: 20px;
+            max-width: 600px;
+            width: 95%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            transform: scale(0.9);
+            transition: transform 0.3s ease;
         }
-        to {
-            transform: translateX(100%);
-            opacity: 0;
+        
+        .modal-overlay.show .modal-crear-oferta {
+            transform: scale(1);
         }
-    }
+        
+        .modal-header {
+            background: linear-gradient(135deg, #4a7c59, #1e3a2e);
+            color: white;
+            padding: 20px;
+            border-radius: 20px 20px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .modal-title {
+            margin: 0;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .modal-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 50%;
+            transition: background 0.3s ease;
+        }
+        
+        .modal-close:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .modal-body {
+            padding: 30px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-label {
+            display: block;
+            color: #1e3a2e;
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        
+        .form-label i {
+            margin-right: 8px;
+            color: #4a7c59;
+        }
+        
+        .form-input, .form-textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 10px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+            box-sizing: border-box;
+        }
+        
+        .form-input:focus, .form-textarea:focus {
+            outline: none;
+            border-color: #4a7c59;
+            box-shadow: 0 0 0 3px rgba(74, 124, 89, 0.1);
+        }
+        
+        .form-textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+        
+        .modal-actions {
+            padding: 20px 30px 30px;
+            display: flex;
+            gap: 15px;
+            justify-content: flex-end;
+        }
+        
+        .btn-modal {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-cancelar {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .btn-cancelar:hover {
+            background: #5a6268;
+        }
+        
+        .btn-crear {
+            background: linear-gradient(135deg, #4a7c59, #1e3a2e);
+            color: white;
+        }
+        
+        .btn-crear:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(74, 124, 89, 0.3);
+        }
+        
+        .btn-crear:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+        }
 
-    /* Estilos para el modal */
-    .modal-backdrop {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.5);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 10000;
-        opacity: 0;
-        visibility: hidden;
-        transition: all 0.3s ease;
-    }
+        /* Estilos para ofertas */
+        .ofertas-container {
+            margin-top: 20px;
+        }
+        
+        .offer-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+            border: 2px solid transparent;
+            transition: all 0.3s ease;
+        }
+        
+        .offer-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+            border-color: #4a7c59;
+        }
+        
+        .offer-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 15px;
+        }
+        
+        .offer-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #1e3a2e;
+            flex: 1;
+            margin-right: 15px;
+        }
+        
+        .offer-actions {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .btn-icon {
+            background: #f8f9fa;
+            border: none;
+            width: 35px;
+            height: 35px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: #64748b;
+        }
+        
+        .btn-icon:hover {
+            background: #4a7c59;
+            color: white;
+            transform: translateY(-1px);
+        }
+        
+        .btn-icon-delete:hover {
+            background: #dc2626;
+        }
+        
+        .offer-description {
+            color: #64748b;
+            line-height: 1.6;
+            margin-bottom: 15px;
+        }
+        
+        .offer-meta {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .offer-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #64748b;
+            font-size: 14px;
+        }
+        
+        .offer-meta-item i {
+            color: #4a7c59;
+            width: 16px;
+        }
+        
+        .offer-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .offer-status {
+            flex-shrink: 0;
+        }
+        
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .status-active {
+            background: rgba(34, 197, 94, 0.1);
+            color: #16a34a;
+            border: 1px solid rgba(34, 197, 94, 0.2);
+        }
+        
+        .status-progress {
+            background: rgba(59, 130, 246, 0.1);
+            color: #2563eb;
+            border: 1px solid rgba(59, 130, 246, 0.2);
+        }
+        
+        .status-closed {
+            background: rgba(107, 114, 128, 0.1);
+            color: #6b7280;
+            border: 1px solid rgba(107, 114, 128, 0.2);
+        }
+        
+        .no-ofertas {
+            background: white;
+            border-radius: 15px;
+            margin: 20px 0;
+            border: 2px dashed #e5e7eb;
+        }
+        
+        .btn-outline {
+            background: transparent;
+            border: 2px solid #e5e7eb;
+            color: #6b7280;
+        }
+        
+        .btn-outline:hover {
+            border-color: #dc2626;
+            color: #dc2626;
+            background: rgba(220, 38, 38, 0.05);
+        }
 
-    .modal-backdrop.show {
-        opacity: 1;
-        visibility: visible;
-    }
-
-    .modal-content {
-        background: white;
-        padding: 30px;
-        border-radius: 15px;
-        text-align: center;
-        max-width: 400px;
-        margin: 20px;
-        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-        transform: scale(0.9) translateY(20px);
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    .modal-backdrop.show .modal-content {
-        transform: scale(1) translateY(0);
-    }
-
-    .modal-actions {
-        display: flex;
-        gap: 15px;
-        justify-content: center;
-        margin-top: 25px;
-    }
-
-    .modal-btn {
-        padding: 12px 24px;
-        border-radius: 10px;
-        cursor: pointer;
-        font-weight: 600;
-        transition: all 0.3s ease;
-        border: none;
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    }
-
-    .modal-btn-cancel {
-        background: #f1f5f9;
-        color: #64748b;
-        border: 2px solid #e2e8f0;
-    }
-
-    .modal-btn-cancel:hover {
-        background: #e2e8f0;
-        color: #475569;
-    }
-
-    .modal-btn-confirm {
-        background: linear-gradient(135deg, #dc2626, #991b1b);
-        color: white;
-    }
-
-    .modal-btn-confirm:hover {
-        background: linear-gradient(135deg, #991b1b, #7f1d1d);
-    }
+        /* Animaciones */
+        @keyframes slideInRight {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes slideOutRight {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .modal-crear-oferta {
+                width: 98%;
+                margin: 10px;
+            }
+            
+            .modal-body {
+                padding: 20px;
+            }
+            
+            .modal-actions {
+                flex-direction: column;
+                padding: 15px 20px 20px;
+            }
+            
+            .offer-header {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .offer-title {
+                margin-right: 0;
+            }
+            
+            .offer-footer {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .offer-actions {
+                justify-content: stretch;
+                gap: 10px;
+            }
+            
+            .offer-actions .btn {
+                flex: 1;
+            }
+        }
     `;
-
-    document.head.appendChild(dynamicStyles);
-}
-
-/**
- * Inicialización principal
- */
-async function initializeDashboard() {
-    console.log('🌱 Iniciando AgroMatch Dashboard...');
     
-    // Inyectar estilos dinámicos
-    injectDynamicStyles();
-    
-    // Configurar event listeners
-    setupEventListeners();
-    
-    // Obtener datos de sesión del servidor
-    const sessionValid = await fetchUserSession();
-    
-    if (!sessionValid) {
-        console.log('❌ No se pudo obtener sesión válida');
-        return;
-    }
-    
-    // Inicializar el mapa después de un breve delay para asegurar que el DOM esté listo
-    setTimeout(initMap, 500);
-    
-    // Configurar animaciones
-    setupEntryAnimations();
-    
-    // Iniciar validación de sesión periódica
-    startSessionValidation();
-    
-    // Iniciar actualizaciones de notificaciones
-    startNotificationUpdates();
-    
-    console.log('✅ Dashboard inicializado correctamente');
-    console.log('🎯 Sistema de dropdown dinámico activo - DEBE funcionar ahora');
-    showStatusMessage('¡Bienvenido al dashboard de AgroMatch!', 'success');
+    document.head.appendChild(style);
+    console.log('✅ Estilos dinámicos agregados');
 }
 
 // ================================================================
-// INICIO DE LA APLICACIÓN
+// INICIALIZACIÓN FINAL
 // ================================================================
 
-// Asegurarse de que las funciones estén disponibles globalmente
-window.initMap = initMap;
-window.handleMapError = handleMapError;
+// Agregar estilos dinámicos al cargar
+addDynamicStyles();
+
+// Asegurar que las funciones estén disponibles globalmente
+window.toggleProfileMenu = toggleProfileMenu;
+window.closeProfileMenu = closeProfileMenu;
+window.createNewOffer = createNewOffer;
+window.abrirModalOferta = abrirModalOferta;
+window.cerrarModalOferta = cerrarModalOferta;
+window.crearOferta = crearOferta;
+window.editarOferta = editarOferta;
+window.cerrarModalEditar = cerrarModalEditar;
+window.guardarEdicion = guardarEdicion;
+window.eliminarOferta = eliminarOferta;
+window.cerrarOferta = cerrarOferta;
+window.verPostulaciones = verPostulaciones;
 window.contactWorker = contactWorker;
+window.showNotifications = showNotifications;
+window.handleNotification = handleNotification;
 
-// Inicializar cuando el DOM esté listo
-document.addEventListener('DOMContentLoaded', initializeDashboard);
-
-// Logs de debugging
-console.log('🚀 AgroMatch Dashboard - Sistema completo cargado');
-console.log('🔐 Autenticación integrada con Python Flask');
-console.log('👤 Gestión completa de perfiles y sesiones');
-console.log('💡 NUEVO: Dropdown dinámico con position:fixed garantizado');
-console.log('🗺️ NUEVO: Mapa interactivo con Leaflet (gratis)');
+console.log('🚀 AgroMatch Dashboard Agricultor - Sistema completo cargado');
+console.log('✅ Todas las funcionalidades integradas:');
+console.log('   - Gestión de sesión y autenticación');
+console.log('   - Menú desplegable de usuario (CORREGIDO)');
+console.log('   - Crear, editar, eliminar ofertas');
+console.log('   - Mapa interactivo con Leaflet');
+console.log('   - Sistema de notificaciones');
+console.log('   - Responsive design');

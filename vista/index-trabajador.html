@@ -15,6 +15,30 @@
     <!-- Overlay para modales -->
     <div class="overlay" id="overlay"></div>
     
+    <!-- Modal para confirmar postulación -->
+    <div class="modal" id="applyJobModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Confirmar Postulación</h2>
+                <button class="close-btn" onclick="closeApplyModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>¿Estás seguro de que quieres postularte a este trabajo?</p>
+                <div id="jobDetailsForApplication"></div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeApplyModal()">
+                    Cancelar
+                </button>
+                <button class="btn btn-primary" onclick="confirmApplication()" id="confirmApplyBtn">
+                    <i class="fas fa-paper-plane"></i> Confirmar Postulación
+                </button>
+            </div>
+        </div>
+    </div>
+    
     <!-- Dropdown dinámico del perfil -->
     <div id="dynamicProfileDropdown" style="
         position: fixed;
@@ -112,144 +136,35 @@
                 <!-- Quick Stats -->
                 <div class="quick-stats">
                     <div class="quick-stat">
-                        <div class="quick-stat-number">8</div>
+                        <div class="quick-stat-number" id="jobsNearCount">0</div>
                         <div class="quick-stat-label">Trabajos Cerca</div>
                     </div>
                     <div class="quick-stat">
-                        <div class="quick-stat-number">3</div>
+                        <div class="quick-stat-number" id="applicationsCount">0</div>
                         <div class="quick-stat-label">Postulaciones</div>
                     </div>
                     <div class="quick-stat">
-                        <div class="quick-stat-number">1</div>
+                        <div class="quick-stat-number" id="activeJobsCount">0</div>
                         <div class="quick-stat-label">En Progreso</div>
                     </div>
                 </div>
 
                 <div class="section-title">
                     <i class="fas fa-briefcase"></i>
-                    Trabajos Disponibles Cerca de Ti
+                    Trabajos Disponibles
                 </div>
                 
-                <div class="job-list">
-                    <div class="job-card" data-type="cosecha">
-                        <div class="job-header">
-                            <div class="job-title">Cosecha de Café Premium</div>
-                            <div class="job-salary">$50,000/día</div>
-                        </div>
-                        <div class="job-details">
-                            Finca El Paraíso - Recolección selectiva de café maduro en montaña. Experiencia en café requerida.
-                        </div>
-                        <div class="job-location">
-                            <i class="fas fa-map-marker-alt"></i>
-                            2.5 km • 3 días de duración • Inicia mañana
-                        </div>
-                        <div class="job-footer">
-                            <div class="job-tags">
-                                <span class="job-tag">Café</span>
-                                <span class="job-tag">Montaña</span>
-                                <span class="job-tag">Premium</span>
-                            </div>
-                            <div class="job-actions"></div>
-                            <button class="favorite-btn" onclick="toggleFavorite(this, 1)">
-                                <i class="far fa-heart"></i>
-                            </button>
-                            <button class="apply-btn" onclick="applyToJob(this)"></button>
-                                <i class="fas fa-paper-plane"></i> Postularme
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="job-card" data-type="siembra">
-                        <div class="job-header">
-                            <div class="job-title">Siembra de Maíz Tecnificado</div>
-                            <div class="job-salary">$45,000/día</div>
-                        </div>
-                        <div class="job-details">
-                            Lote Norte - Preparación de tierra, siembra tecnificada y aplicación de fertilizantes.
-                        </div>
-                        <div class="job-location">
-                            <i class="fas fa-map-marker-alt"></i>
-                            4.1 km • 5 días de duración • Inicia en 2 días
-                        </div>
-                        <div class="job-footer">
-                            <div class="job-tags">
-                                <span class="job-tag">Maíz</span>
-                                <span class="job-tag">Tecnificado</span>
-                            </div>
-                            <button class="apply-btn" onclick="applyToJob(this)">
-                                <i class="fas fa-paper-plane"></i> Postularme
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="job-card" data-type="recoleccion">
-                        <div class="job-header">
-                            <div class="job-title">Recolección de Frutas Cítricas</div>
-                            <div class="job-salary">$40,000/día</div>
-                        </div>
-                        <div class="job-details">
-                            Huerto Principal - Recolección cuidadosa de naranjas y limones. Manejo delicado requerido.
-                        </div>
-                        <div class="job-location">
-                            <i class="fas fa-map-marker-alt"></i>
-                            1.8 km • 2 días de duración • Flexible
-                        </div>
-                        <div class="job-footer">
-                            <div class="job-tags">
-                                <span class="job-tag">Cítricos</span>
-                                <span class="job-tag">Cerca</span>
-                            </div>
-                            <button class="apply-btn" onclick="applyToJob(this)">
-                                <i class="fas fa-paper-plane"></i> Postularme
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="job-card" data-type="mantenimiento">
-                        <div class="job-header">
-                            <div class="job-title">Mantenimiento de Invernaderos</div>
-                            <div class="job-salary">$42,000/día</div>
-                        </div>
-                        <div class="job-details">
-                            Finca La Esperanza - Poda, limpieza y mantenimiento de sistemas de riego en invernaderos.
-                        </div>
-                        <div class="job-location">
-                            <i class="fas fa-map-marker-alt"></i>
-                            6.2 km • 1 día de duración • Hoy
-                        </div>
-                        <div class="job-footer">
-                            <div class="job-tags">
-                                <span class="job-tag">Invernadero</span>
-                                <span class="job-tag">Técnico</span>
-                            </div>
-                            <button class="apply-btn" onclick="applyToJob(this)">
-                                <i class="fas fa-paper-plane"></i> Postularme
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="job-card" data-type="cosecha">
-                        <div class="job-header">
-                            <div class="job-title">Cosecha de Aguacate Hass</div>
-                            <div class="job-salary">$55,000/día</div>
-                        </div>
-                        <div class="job-details">
-                            Finca Los Alpes - Cosecha especializada de aguacate Hass para exportación. Experiencia necesaria.
-                        </div>
-                        <div class="job-location">
-                            <i class="fas fa-map-marker-alt"></i>
-                            7.5 km • 4 días de duración • Próximamente
-                        </div>
-                        <div class="job-footer">
-                            <div class="job-tags">
-                                <span class="job-tag">Aguacate</span>
-                                <span class="job-tag">Exportación</span>
-                                <span class="job-tag">Premium</span>
-                            </div>
-                            <button class="apply-btn" onclick="applyToJob(this)">
-                                <i class="fas fa-paper-plane"></i> Postularme
-                            </button>
-                        </div>
+                <!-- Contenedor de trabajos que se llenará dinámicamente -->
+                <div class="job-list" id="jobsList">
+                    <!-- Los trabajos se cargarán aquí dinámicamente -->
+                </div>
+                
+                <!-- Mensaje cuando no hay trabajos -->
+                <div class="no-jobs" id="noJobsMessage" style="display: none;">
+                    <div class="no-jobs-content">
+                        <i class="fas fa-briefcase"></i>
+                        <h3>No hay trabajos disponibles</h3>
+                        <p>No se encontraron ofertas de trabajo que coincidan con tus criterios.</p>
                     </div>
                 </div>
 
@@ -260,44 +175,17 @@
                         Mis Trabajos
                     </div>
                     
-                    <div class="job-card current-job">
-                        <div class="job-header">
-                            <div class="job-title">Cosecha de Tomate Cherry - Confirmado</div>
-                            <div class="job-status status-confirmed">En Progreso</div>
-                        </div>
-                        <div class="job-details">
-                            Finca Los Rosales - Día 2 de 3 • Progreso: 75% completado
-                        </div>
-                        <div class="job-location">
-                            <i class="fas fa-clock"></i>
-                            1 día restante • Finaliza mañana
-                        </div>
-                        <div class="job-footer">
-                            <div class="job-tags">
-                                <span class="job-tag">Activo</span>
-                            </div>
-                            <button class="btn btn-primary" onclick="viewProgress()">
-                                <i class="fas fa-chart-line"></i> Ver Progreso
-                            </button>
-                        </div>
+                    <!-- Contenedor de mis trabajos que se llenará dinámicamente -->
+                    <div id="myJobsList">
+                        <!-- Los trabajos aceptados se cargarán aquí -->
                     </div>
-
-                    <div class="job-card">
-                        <div class="job-header">
-                            <div class="job-title">Siembra de Lechuga - Pendiente</div>
-                            <div class="job-status status-pending">Pendiente</div>
-                        </div>
-                        <div class="job-details">
-                            Esperando confirmación del agricultor • Postulado hace 2 días
-                        </div>
-                        <div class="job-location">
-                            <i class="fas fa-hourglass-half"></i>
-                            Respuesta esperada en 24 horas
-                        </div>
-                        <div class="job-footer">
-                            <div class="job-tags">
-                                <span class="job-tag">Postulado</span>
-                            </div>
+                    
+                    <!-- Mensaje cuando no tengo trabajos -->
+                    <div class="no-my-jobs" id="noMyJobsMessage" style="display: none;">
+                        <div class="no-jobs-content">
+                            <i class="fas fa-tasks"></i>
+                            <h3>No tienes trabajos activos</h3>
+                            <p>Postúlate a las ofertas disponibles para empezar a trabajar.</p>
                         </div>
                     </div>
                 </div>
@@ -322,11 +210,11 @@
                     
                     <div class="profile-stats">
                         <div class="profile-stat">
-                            <div class="stat-value">28</div>
+                            <div class="stat-value" id="totalJobs">0</div>
                             <div class="stat-label">Trabajos</div>
                         </div>
                         <div class="profile-stat">
-                            <div class="stat-value">156h</div>
+                            <div class="stat-value" id="totalHours">0h</div>
                             <div class="stat-label">Horas</div>
                         </div>
                     </div>
@@ -346,27 +234,319 @@
                         Notificaciones
                     </div>
                     
-                    <div class="notification-item" onclick="handleNotification(this)">
-                        <div class="notification-title">🆕 Nuevo trabajo disponible</div>
-                        <div class="notification-text">Cosecha de aguacate a 3km de tu ubicación. Pago: $55,000/día</div>
-                    </div>
-
-                    <div class="notification-item" onclick="handleNotification(this)">
-                        <div class="notification-title">⏰ Recordatorio de trabajo</div>
-                        <div class="notification-text">Tu trabajo de mañana inicia a las 6:00 AM en Finca Los Rosales</div>
+                    <div id="notificationsList">
+                        <!-- Las notificaciones se cargarán aquí dinámicamente -->
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Script para cargar foto de perfil - EJECUTAR AUTOMÁTICAMENTE -->
     <script>
-        // Cargar foto de perfil cuando la página se carga
+        let selectedJobId = null;
+        
+        // Cargar datos al inicializar la página
         document.addEventListener('DOMContentLoaded', function() {
-            // Ejecutar después de que todo esté cargado
+            loadUserProfile();
+            loadAvailableJobs();
+            loadMyJobs();
+            loadStats();
             setTimeout(loadUserProfilePhoto, 1000);
         });
+        
+        // Cargar trabajos disponibles
+        function loadAvailableJobs() {
+            fetch('/api/get_jobs')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    displayJobs(data.jobs);
+                    updateJobsCount(data.jobs.length);
+                } else {
+                    showNoJobsMessage();
+                }
+            })
+            .catch(error => {
+                console.error('Error al cargar trabajos:', error);
+                showNoJobsMessage();
+            });
+        }
+        
+        // Mostrar trabajos en la interfaz
+        function displayJobs(jobs) {
+            const jobsList = document.getElementById('jobsList');
+            const noJobsMessage = document.getElementById('noJobsMessage');
+            
+            if (jobs.length === 0) {
+                showNoJobsMessage();
+                return;
+            }
+            
+            jobsList.innerHTML = '';
+            noJobsMessage.style.display = 'none';
+            
+            jobs.forEach(job => {
+                const jobCard = createJobCard(job);
+                jobsList.appendChild(jobCard);
+            });
+        }
+        
+        // Crear tarjeta de trabajo
+        function createJobCard(job) {
+            const div = document.createElement('div');
+            div.className = 'job-card';
+            div.innerHTML = `
+                <div class="job-header">
+                    <div class="job-title">${job.titulo}</div>
+                    <div class="job-salary">$${Number(job.pago_ofrecido).toLocaleString()}/día</div>
+                </div>
+                <div class="job-details">
+                    ${job.descripcion}
+                </div>
+                <div class="job-location">
+                    <i class="fas fa-user"></i>
+                    ${job.nombre_agricultor} • Publicado: ${formatDate(job.fecha_publicacion)}
+                </div>
+                <div class="job-footer">
+                    <div class="job-tags">
+                        <span class="job-tag">${job.estado}</span>
+                    </div>
+                    <div class="job-actions">
+                        <button class="favorite-btn" onclick="toggleFavorite(this, ${job.id_oferta})">
+                            <i class="far fa-heart"></i>
+                        </button>
+                        <button class="apply-btn" onclick="showApplyModal(${job.id_oferta}, '${job.titulo}')">
+                            <i class="fas fa-paper-plane"></i> Postularme
+                        </button>
+                    </div>
+                </div>
+            `;
+            return div;
+        }
+        
+        // Mostrar modal de postulación
+        function showApplyModal(jobId, jobTitle) {
+            selectedJobId = jobId;
+            document.getElementById('jobDetailsForApplication').innerHTML = `
+                <strong>Trabajo:</strong> ${jobTitle}
+            `;
+            document.getElementById('applyJobModal').style.display = 'flex';
+            document.getElementById('overlay').style.display = 'block';
+        }
+        
+        // Cerrar modal de postulación
+        function closeApplyModal() {
+            document.getElementById('applyJobModal').style.display = 'none';
+            document.getElementById('overlay').style.display = 'none';
+            selectedJobId = null;
+        }
+        
+        // Confirmar postulación
+        function confirmApplication() {
+            if (!selectedJobId) return;
+            
+            fetch('/api/apply_job', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    job_id: selectedJobId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Postulación enviada exitosamente');
+                    closeApplyModal();
+                    loadAvailableJobs(); // Recargar trabajos
+                    loadStats(); // Actualizar estadísticas
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error de conexión. Intenta de nuevo.');
+            });
+        }
+        
+        // Cargar mis trabajos
+        function loadMyJobs() {
+            fetch('/api/get_my_jobs')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.jobs.length > 0) {
+                    displayMyJobs(data.jobs);
+                } else {
+                    document.getElementById('noMyJobsMessage').style.display = 'block';
+                }
+            })
+            .catch(error => {
+                console.error('Error al cargar mis trabajos:', error);
+            });
+        }
+        
+        // Mostrar mis trabajos
+        function displayMyJobs(jobs) {
+            const myJobsList = document.getElementById('myJobsList');
+            const noMyJobsMessage = document.getElementById('noMyJobsMessage');
+            
+            myJobsList.innerHTML = '';
+            noMyJobsMessage.style.display = 'none';
+            
+            jobs.forEach(job => {
+                const jobCard = createMyJobCard(job);
+                myJobsList.appendChild(jobCard);
+            });
+        }
+        
+        // Crear tarjeta de mi trabajo
+        function createMyJobCard(job) {
+            const div = document.createElement('div');
+            div.className = 'job-card';
+            
+            let statusClass = '';
+            let statusText = '';
+            
+            switch(job.estado) {
+                case 'Pendiente':
+                    statusClass = 'status-pending';
+                    statusText = 'Pendiente';
+                    break;
+                case 'Aceptada':
+                    statusClass = 'status-confirmed';
+                    statusText = 'Confirmado';
+                    break;
+                case 'Rechazada':
+                    statusClass = 'status-rejected';
+                    statusText = 'Rechazado';
+                    break;
+            }
+            
+            div.innerHTML = `
+                <div class="job-header">
+                    <div class="job-title">${job.titulo}</div>
+                    <div class="job-status ${statusClass}">${statusText}</div>
+                </div>
+                <div class="job-details">
+                    ${job.descripcion}
+                </div>
+                <div class="job-location">
+                    <i class="fas fa-calendar"></i>
+                    Postulado: ${formatDate(job.fecha_postulacion)}
+                </div>
+                <div class="job-footer">
+                    <div class="job-tags">
+                        <span class="job-tag">${job.estado}</span>
+                    </div>
+                </div>
+            `;
+            return div;
+        }
+        
+        // Cargar estadísticas
+        function loadStats() {
+            fetch('/api/get_worker_stats')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('applicationsCount').textContent = data.applications || 0;
+                    document.getElementById('activeJobsCount').textContent = data.active_jobs || 0;
+                    document.getElementById('totalJobs').textContent = data.total_jobs || 0;
+                    document.getElementById('totalHours').textContent = (data.total_hours || 0) + 'h';
+                }
+            })
+            .catch(error => {
+                console.error('Error al cargar estadísticas:', error);
+            });
+        }
+        
+        // Cargar perfil de usuario
+        function loadUserProfile() {
+            fetch('/api/get_user_profile')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const fullName = data.user.nombre + ' ' + data.user.apellido;
+                    document.getElementById('profileName').textContent = fullName;
+                    document.getElementById('dropdownName').textContent = fullName;
+                }
+            })
+            .catch(error => {
+                console.error('Error al cargar perfil:', error);
+            });
+        }
+        
+        // Funciones auxiliares
+        function showNoJobsMessage() {
+            document.getElementById('jobsList').innerHTML = '';
+            document.getElementById('noJobsMessage').style.display = 'block';
+        }
+        
+        function updateJobsCount(count) {
+            document.getElementById('jobsNearCount').textContent = count;
+        }
+        
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('es-ES');
+        }
+        
+        function toggleFavorite(button, jobId) {
+            // Implementar funcionalidad de favoritos
+            const icon = button.querySelector('i');
+            if (icon.classList.contains('far')) {
+                icon.classList.remove('far');
+                icon.classList.add('fas');
+                icon.style.color = '#e74c3c';
+            } else {
+                icon.classList.remove('fas');
+                icon.classList.add('far');
+                icon.style.color = '';
+            }
+        }
+        
+        // Filtros
+        function filterJobs(searchTerm) {
+            const jobCards = document.querySelectorAll('.job-card');
+            jobCards.forEach(card => {
+                const title = card.querySelector('.job-title').textContent.toLowerCase();
+                const description = card.querySelector('.job-details').textContent.toLowerCase();
+                
+                if (title.includes(searchTerm.toLowerCase()) || description.includes(searchTerm.toLowerCase())) {
+                    card.style.display = 'block';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        }
+        
+        function filterByType(button, type) {
+            // Remover clase active de todos los botones
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Agregar clase active al botón seleccionado
+            button.classList.add('active');
+            
+            // Si type es 'todos', mostrar todos los trabajos
+            if (type === 'todos') {
+                loadAvailableJobs();
+            } else {
+                // Filtrar por tipo específico
+                const jobCards = document.querySelectorAll('.job-card');
+                jobCards.forEach(card => {
+                    const title = card.querySelector('.job-title').textContent.toLowerCase();
+                    if (title.includes(type)) {
+                        card.style.display = 'block';
+                    } else {
+                        card.style.display = 'none';
+                    }
+                });
+            }
+        }
     </script>
 </body>
 </html>
