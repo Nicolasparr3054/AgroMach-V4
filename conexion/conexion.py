@@ -55,7 +55,7 @@ def get_db_connection():
         if connection and connection.is_connected():
             connection.close()
 
-def execute_query(query, params=None, fetch_one=False, fetch_all=False):
+def execute_query(query, params=None, fetch_one=False, fetch_all=True):
     """
     Ejecuta una consulta SQL de forma segura.
     
@@ -68,53 +68,11 @@ def execute_query(query, params=None, fetch_one=False, fetch_all=False):
     Returns:
         Resultado de la consulta o None
     """
-    with get_db_connection() as connection:
-        cursor = connection.cursor(dictionary=True)
-        try:
-            cursor.execute(query, params or ())
-            
-            if fetch_one:
-                return cursor.fetchone()
-            elif fetch_all:
-                return cursor.fetchall()
-            else:
-                connection.commit()
-                return cursor.lastrowid if cursor.lastrowid else True
-                
-        except Error as e:
-            connection.rollback()
-            raise e
-        finally:
-            cursor.close()
-
-def test_connection():
-    """
-    Prueba la conexión a la base de datos.
-    """
-    try:
-        with get_db_connection() as connection:
-            cursor = connection.cursor()
-            cursor.execute("SELECT VERSION()")
-            version = cursor.fetchone()
-            print(f"Conexión exitosa. Versión de MySQL: {version[0]}")
-            return True
-    except Exception as e:
-        print(f"Error al conectar: {e}")
-        return False
-
-if __name__ == "__main__":
-    # Prueba la conexión cuando se ejecuta directamente
-    test_connection()
-    
-def execute_query_dict(query, params=None, fetch_one=False):
-    """
-    Función que devuelve diccionarios para compatibilidad con rutas nuevas
-    """
     connection = None
     cursor = None
     
     try:
-        connection = get_connection()  # Usa tu función existente de conexión
+        connection = get_connection()
         cursor = connection.cursor(dictionary=True)  # IMPORTANTE: dictionary=True
         
         if params:
@@ -137,7 +95,7 @@ def execute_query_dict(query, params=None, fetch_one=False):
         return result
         
     except Exception as e:
-        print(f"Error en execute_query_dict: {e}")
+        print(f"❌ Error en execute_query: {e}")
         if connection:
             connection.rollback()
         return None
@@ -145,5 +103,5 @@ def execute_query_dict(query, params=None, fetch_one=False):
     finally:
         if cursor:
             cursor.close()
-        if connection:
+        if connection and connection.is_connected():
             connection.close()

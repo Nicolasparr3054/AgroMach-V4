@@ -461,12 +461,26 @@ async function executeLogout() {
 // GESTIÓN DE OFERTAS - FUNCIONALIDAD PRINCIPAL
 // ================================================================
 
-/**
- * Cargar ofertas del agricultor desde el backend
- */
 async function cargarOfertasDelAgricultor() {
     try {
         console.log('🔄 Cargando ofertas del agricultor...');
+        
+        // DEBUGGING: Verificar datos de sesión
+        const sessionResponse = await fetch('/get_user_session', {
+            method: 'GET',
+            credentials: 'include'
+        });
+        
+        if (sessionResponse.ok) {
+            const sessionData = await sessionResponse.json();
+            console.log('👤 Datos de sesión:', sessionData);
+            
+            if (sessionData.success) {
+                console.log('🔍 User ID:', sessionData.user.user_id);
+                console.log('🔍 Role:', sessionData.user.role);
+                console.log('🔍 Nombre:', sessionData.user.nombre);
+            }
+        }
         
         const response = await fetch('/api/get_farmer_jobs', {
             method: 'GET',
@@ -476,25 +490,29 @@ async function cargarOfertasDelAgricultor() {
             }
         });
         
-        if (response.ok) {
-            const data = await response.json();
-            
-            if (data.success) {
-                ofertasData = data.ofertas || [];
-                mostrarOfertasEnDashboard(ofertasData);
-                actualizarEstadisticas(data.estadisticas);
-                console.log(`✅ ${ofertasData.length} ofertas cargadas`);
-            } else {
-                throw new Error(data.message || 'Error al cargar ofertas');
-            }
-        } else {
+        console.log('📡 Response status:', response.status);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('❌ Response no OK:', errorText);
             throw new Error(`Error del servidor: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('📦 Datos recibidos:', data);
+        
+        if (data.success) {
+            ofertasData = data.ofertas || [];
+            mostrarOfertasEnDashboard(ofertasData);
+            actualizarEstadisticas(data.estadisticas);
+            console.log(`✅ ${ofertasData.length} ofertas cargadas`);
+        } else {
+            throw new Error(data.message || 'Error al cargar ofertas');
         }
         
     } catch (error) {
         console.error('❌ Error cargando ofertas:', error);
-        showStatusMessage('Error al cargar ofertas', 'error');
-        // Mostrar mensaje de no ofertas
+        showStatusMessage('Error al cargar ofertas: ' + error.message, 'error');
         mostrarOfertasEnDashboard([]);
     }
 }
